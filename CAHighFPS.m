@@ -5,15 +5,17 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#ifndef CAFrameRateRange_DEFINED
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+
+#if !__has_include(<QuartzCore/CAFrameRateRange.h>)
 typedef struct CAFrameRateRange {
     float minimum;
     float maximum;
     float preferred;
 } CAFrameRateRange;
-#endif
 
-#ifndef CAFrameRateRangeMake
 static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum, float preferred) {
     CAFrameRateRange range;
     range.minimum = minimum;
@@ -390,3 +392,5 @@ static void CAHighFPS_Init(void) {
 
     NSLog(@"[CAHighFPS] Successfully loaded into %@ - 120Hz locked.", [NSBundle mainBundle].bundleIdentifier);
 }
+
+#pragma clang diagnostic pop

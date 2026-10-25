@@ -2,12 +2,15 @@ name: Build CAHighFPS dylib
 
 on:
   push:
-    branches: [ main, master ]
+    branches:
+      - '**'
     tags:
-      - 'v*'
+      - '**'
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -29,14 +32,15 @@ jobs:
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           echo "Using iPhoneOS SDK at: $SDK_PATH"
           
-          # Compile universal arm64 + arm64e dylib using pure Objective-C runtime
-          # Zero external dependencies (no Substrate/ElleKit required)
+          # Universal arm64 + arm64e build targeting iOS 15.0+ (first iOS version with ProMotion on iPhone)
           xcrun -sdk iphoneos clang -O3 \
             -arch arm64 -arch arm64e \
             -shared -dynamiclib \
             -fobjc-arc \
             -isysroot "$SDK_PATH" \
-            -miphoneos-version-min=14.0 \
+            -miphoneos-version-min=15.0 \
+            -Wno-deprecated-declarations \
+            -Wno-unguarded-availability-new \
             -framework Foundation \
             -framework UIKit \
             -framework QuartzCore \
@@ -64,10 +68,13 @@ jobs:
             CAHighFPS.dylib
             CAHighFPS.dylib.zip
 
-      - name: Create Release (on Tag)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Create or Update Pre-Release
         uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'CAHighFPS Latest Build' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           files: |
             CAHighFPS.dylib
             CAHighFPS.dylib.zip

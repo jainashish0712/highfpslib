@@ -1,0 +1,148 @@
+﻿
+2026-10-25T20:38:12.5226960Z Using iPhoneOS SDK at: /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk
+2026-10-25T20:38:14.4401860Z CAHighFPS.m:9:16: error: redefinition of 'CAFrameRateRange'
+2026-10-25T20:38:14.4402410Z typedef struct CAFrameRateRange {
+2026-10-25T20:38:14.4402680Z                ^
+2026-10-25T20:38:14.4403440Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:12:8: note: previous definition is here
+2026-10-25T20:38:14.4404300Z struct CAFrameRateRange {
+2026-10-25T20:38:14.4404480Z        ^
+2026-10-25T20:38:14.4406810Z CAHighFPS.m:13:3: error: typedef redefinition with different types ('struct (unnamed struct at CAHighFPS.m:9:16)' vs 'struct CAFrameRateRange')
+2026-10-25T20:38:14.4407550Z } CAFrameRateRange;
+2026-10-25T20:38:14.4407920Z   ^
+2026-10-25T20:38:14.4408820Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: previous definition is here
+2026-10-25T20:38:14.4409710Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4410000Z                                 ^
+2026-10-25T20:38:14.4410390Z CAHighFPS.m:17:32: error: static declaration of 'CAFrameRateRangeMake' follows non-static declaration
+2026-10-25T20:38:14.4411020Z static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum, float preferred) {
+2026-10-25T20:38:14.4411470Z                                ^
+2026-10-25T20:38:14.4412270Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:27:28: note: previous declaration is here
+2026-10-25T20:38:14.4413710Z CA_EXTERN CAFrameRateRange CAFrameRateRangeMake(float minimum,
+2026-10-25T20:38:14.4414030Z                            ^
+2026-10-25T20:38:14.4414480Z CAHighFPS.m:18:5: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4414940Z     CAFrameRateRange range;
+2026-10-25T20:38:14.4415130Z     ^~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4416120Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4417660Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4417950Z                                 ^
+2026-10-25T20:38:14.4421280Z CAHighFPS.m:18:5: note: enclose 'CAFrameRateRange' in an @available check to silence this warning
+2026-10-25T20:38:14.4421750Z     CAFrameRateRange range;
+2026-10-25T20:38:14.4421950Z     ^~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4452610Z CAHighFPS.m:132:26: warning: 'frameInterval' is deprecated: first deprecated in iOS 10.0 - preferredFramesPerSecond [-Wdeprecated-declarations]
+2026-10-25T20:38:14.4453180Z         self.displayLink.frameInterval = 1;
+2026-10-25T20:38:14.4453460Z                          ^
+2026-10-25T20:38:14.4454390Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CADisplayLink.h:78:32: note: 'frameInterval' has been explicitly marked deprecated here
+2026-10-25T20:38:14.4455340Z @property(nonatomic) NSInteger frameInterval
+2026-10-25T20:38:14.4455600Z                                ^
+2026-10-25T20:38:14.4461560Z CAHighFPS.m:169:45: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4462250Z - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
+2026-10-25T20:38:14.4462770Z                                             ^
+2026-10-25T20:38:14.4464010Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4465650Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4468250Z                                 ^
+2026-10-25T20:38:14.4468870Z CAHighFPS.m:169:1: note: annotate 'highfps_setPreferredFrameRateRange:' with an availability attribute to silence this warning
+2026-10-25T20:38:14.4469740Z - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
+2026-10-25T20:38:14.4470310Z ^
+2026-10-25T20:38:14.4470720Z                                                                     API_AVAILABLE(ios(15.0))
+2026-10-25T20:38:14.4492340Z CAHighFPS.m:175:4: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4493160Z - (CAFrameRateRange)highfps_preferredFrameRateRange {
+2026-10-25T20:38:14.4493790Z    ^
+2026-10-25T20:38:14.4495370Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4499900Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4506240Z                                 ^
+2026-10-25T20:38:14.4506910Z CAHighFPS.m:175:1: note: annotate 'highfps_preferredFrameRateRange' with an availability attribute to silence this warning
+2026-10-25T20:38:14.4507560Z - (CAFrameRateRange)highfps_preferredFrameRateRange {
+2026-10-25T20:38:14.4508210Z ^
+2026-10-25T20:38:14.4508480Z                                                      API_AVAILABLE(ios(15.0))
+2026-10-25T20:38:14.4509070Z CAHighFPS.m:171:5: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4509880Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4510270Z     ^~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4511410Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4512630Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4512920Z                                 ^
+2026-10-25T20:38:14.4513350Z CAHighFPS.m:171:5: note: enclose 'CAFrameRateRange' in an @available check to silence this warning
+2026-10-25T20:38:14.4513950Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4514410Z     ^~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4514880Z CAHighFPS.m:171:36: warning: 'CAFrameRateRangeMake' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4515570Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4516050Z                                    ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4517260Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:27:28: note: 'CAFrameRateRangeMake' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4518530Z CA_EXTERN CAFrameRateRange CAFrameRateRangeMake(float minimum,
+2026-10-25T20:38:14.4518880Z                            ^
+2026-10-25T20:38:14.4519310Z CAHighFPS.m:171:36: note: enclose 'CAFrameRateRangeMake' in an @available check to silence this warning
+2026-10-25T20:38:14.4519870Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4520350Z                                    ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4520910Z CAHighFPS.m:176:12: warning: 'CAFrameRateRangeMake' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4521510Z     return CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4521880Z            ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4523140Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:27:28: note: 'CAFrameRateRangeMake' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4524260Z CA_EXTERN CAFrameRateRange CAFrameRateRangeMake(float minimum,
+2026-10-25T20:38:14.4524580Z                            ^
+2026-10-25T20:38:14.4525040Z CAHighFPS.m:176:12: note: enclose 'CAFrameRateRangeMake' in an @available check to silence this warning
+2026-10-25T20:38:14.4525640Z     return CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4525960Z            ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4526490Z CAHighFPS.m:204:45: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4527170Z - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
+2026-10-25T20:38:14.4527500Z                                             ^
+2026-10-25T20:38:14.4528560Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4529850Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4530170Z                                 ^
+2026-10-25T20:38:14.4530760Z CAHighFPS.m:204:1: note: annotate 'highfps_setPreferredFrameRateRange:' with an availability attribute to silence this warning
+2026-10-25T20:38:14.4531450Z - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
+2026-10-25T20:38:14.4531750Z ^
+2026-10-25T20:38:14.4532000Z                                                                     API_AVAILABLE(ios(15.0))
+2026-10-25T20:38:14.4532540Z CAHighFPS.m:209:4: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4533370Z - (CAFrameRateRange)highfps_preferredFrameRateRange {
+2026-10-25T20:38:14.4533650Z    ^
+2026-10-25T20:38:14.4534630Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4535630Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4535890Z                                 ^
+2026-10-25T20:38:14.4536400Z CAHighFPS.m:209:1: note: annotate 'highfps_preferredFrameRateRange' with an availability attribute to silence this warning
+2026-10-25T20:38:14.4536940Z - (CAFrameRateRange)highfps_preferredFrameRateRange {
+2026-10-25T20:38:14.4537210Z ^
+2026-10-25T20:38:14.4537420Z                                                      API_AVAILABLE(ios(15.0))
+2026-10-25T20:38:14.4537940Z CAHighFPS.m:205:5: warning: 'CAFrameRateRange' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4538590Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4538990Z     ^~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4539990Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:18:33: note: 'CAFrameRateRange' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4540990Z typedef struct CAFrameRateRange CAFrameRateRange
+2026-10-25T20:38:14.4541290Z                                 ^
+2026-10-25T20:38:14.4541660Z CAHighFPS.m:205:5: note: enclose 'CAFrameRateRange' in an @available check to silence this warning
+2026-10-25T20:38:14.4542220Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4542580Z     ^~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4543020Z CAHighFPS.m:205:36: warning: 'CAFrameRateRangeMake' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4543620Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4544070Z                                    ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4545120Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:27:28: note: 'CAFrameRateRangeMake' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4546150Z CA_EXTERN CAFrameRateRange CAFrameRateRangeMake(float minimum,
+2026-10-25T20:38:14.4546440Z                            ^
+2026-10-25T20:38:14.4546880Z CAHighFPS.m:205:36: note: enclose 'CAFrameRateRangeMake' in an @available check to silence this warning
+2026-10-25T20:38:14.4547600Z     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4548010Z                                    ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4548490Z CAHighFPS.m:210:12: warning: 'CAFrameRateRangeMake' is only available on iOS 15.0 or newer [-Wunguarded-availability-new]
+2026-10-25T20:38:14.4549230Z     return CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4549530Z            ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4550700Z /Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/QuartzCore.framework/Headers/CAFrameRateRange.h:27:28: note: 'CAFrameRateRangeMake' has been marked as being introduced in iOS 15.0 here, but the deployment target is iOS 14.0.0
+2026-10-25T20:38:14.4551870Z CA_EXTERN CAFrameRateRange CAFrameRateRangeMake(float minimum,
+2026-10-25T20:38:14.4552180Z                            ^
+2026-10-25T20:38:14.4552900Z CAHighFPS.m:210:12: note: enclose 'CAFrameRateRangeMake' in an @available check to silence this warning
+2026-10-25T20:38:14.4553470Z     return CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+2026-10-25T20:38:14.4553860Z            ^~~~~~~~~~~~~~~~~~~~
+2026-10-25T20:38:14.4595730Z 12 warnings and 3 errors generated.
+2026-10-25T20:38:14.4604890Z ##[error]Process completed with exit code 1.
+2026-10-25T20:38:14.4722460Z Post job cleanup.
+2026-10-25T20:38:14.5614150Z [command]/opt/homebrew/bin/git version
+2026-10-25T20:38:14.5659220Z git version 2.55.0
+2026-10-25T20:38:14.5676150Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/eadfb117-02b7-4a9c-ae9e-0e8a99702900/.gitconfig'
+2026-10-25T20:38:14.5681970Z Temporarily overriding HOME='/Users/runner/work/_temp/eadfb117-02b7-4a9c-ae9e-0e8a99702900' before making global git config changes
+2026-10-25T20:38:14.5682710Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T20:38:14.5685620Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/highfpslib/highfpslib
+2026-10-25T20:38:14.5730970Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T20:38:14.5771610Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-25T20:38:14.6290170Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T20:38:14.6325110Z http.https://github.com/.extraheader
+2026-10-25T20:38:14.6331710Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-25T20:38:14.6382950Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-25T20:38:14.6863430Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T20:38:14.6898420Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-25T20:38:14.7451590Z Cleaning up orphan processes
+2026-10-25T20:38:14.9863910Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

@@ -1,15 +1,17 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 
-#ifndef CAFrameRateRange_DEFINED
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+
+#if !__has_include(<QuartzCore/CAFrameRateRange.h>)
 typedef struct CAFrameRateRange {
     float minimum;
     float maximum;
     float preferred;
 } CAFrameRateRange;
-#endif
 
-#ifndef CAFrameRateRangeMake
 static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum, float preferred) {
     CAFrameRateRange range;
     range.minimum = minimum;
@@ -35,7 +37,7 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 
 static NSInteger maxFPS = -1;
 static NSInteger customFPS = 0;
-static BOOL systemWide = YES; // Default to YES so injected apps automatically work
+static BOOL systemWide = YES;
 static NSArray<NSString *> *whitelist;
 static NSArray<NSString *> *blacklist;
 
@@ -51,7 +53,7 @@ static void loadPreferences() {
     if (systemWideValue && [systemWideValue isKindOfClass:[NSNumber class]]) {
         systemWide = [systemWideValue boolValue];
     } else {
-        systemWide = YES; // Sandboxed/injected fallback
+        systemWide = YES;
     }
 
     id whitelistValue = copyPrefValue(whitelistKey);
@@ -92,7 +94,7 @@ static BOOL shouldEnableForBundleIdentifier(NSString *bundleIdentifier) {
         return ![blacklist containsObject:bundleIdentifier];
     if (whitelist && whitelist.count > 0)
         return [whitelist containsObject:bundleIdentifier];
-    return YES; // Default enabled when injected into an IPA
+    return YES;
 }
 
 #pragma mark - Info.plist Injection
@@ -198,7 +200,6 @@ static void injectPlistKeys(void) {
 
 - (void)setPreferredFrameRateRange:(CAFrameRateRange)range {
     NSInteger target = getTargetFPS();
-    // Force minimum = target (120) so iOS ProMotion cannot downclock to 80Hz/90Hz
     range.minimum = target;
     range.preferred = target;
     range.maximum = target;
@@ -315,3 +316,5 @@ static void injectPlistKeys(void) {
         });
     }
 }
+
+#pragma clang diagnostic pop
