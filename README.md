@@ -1,54 +1,79 @@
-# CAHighFPS
+# CAHighFPS (Force 120 FPS / 120 Hz ProMotion)
 
-Makes your CoreAnimation applications use the highest available FPS, or a custom rate you choose.
+Forces iOS applications (such as Instagram) to run at a continuous, locked **120 FPS / 120 Hz** on ProMotion-enabled devices (iPhone 13 Pro, 14 Pro, 15 Pro, 16 Pro, iPad Pro) without fluctuating or dropping down to 80Hz/90Hz during scrolling, inertial deceleration, or idle feed reading.
 
-## Settings
+---
 
-Open **Settings → CAHighFPS**:
+## Why Instagram Fluctuated to 80Hz / 90Hz (Root Cause)
 
-- **FPS**: Slider from 0 to 120. `0` (default) uses the highest refresh rate of the device. Any other value is forced for enabled apps and clamped to the display's maximum.
-- **Systemwide**: Applies the chosen FPS to every app except SpringBoard and those in Blacklisted Apps. Off by default, so existing per-app selections keep working.
-- **Applications**: Whitelist used when Systemwide is off. Only these apps get the chosen FPS.
-- **Blacklisted Apps**: Apps skipped when Systemwide is on.
+1. **Adaptive Power-Saving Governor:**
+   By default, Apple's ProMotion compositor (`backboardd` / `QuartzCore`) aggressively drops display refresh rates down to 80Hz or 90Hz when scrolling at regular speeds, during scroll deceleration, or during subtle UI transitions.
 
-Reopen an app after changing settings.
+2. **The `minimum` Frame Rate Flaw:**
+   When apps or generic tweaks request ProMotion via `CAFrameRateRange`, they often set:
+   ```objc
+   CAFrameRateRange range = CAFrameRateRangeMake(30, 120, 120); // or (80, 120, 120)
+   ```
+   Because `minimum` is set to 30 or 80, the iOS compositor is explicitly allowed to downclock the display to 80Hz or 90Hz whenever it perceives low motion or deceleration.
 
-## Part 1: CADisplayLink
- 
-Quoting from [Apple](https://developer.apple.com/documentation/quartzcore/cadisplaylink), `CADisplayLink` is a timer object that allows your app to synchronize its drawing to the refresh rate of the display. A5 devices (iPhone 4s and iPad 2) are the first to introduce 60 HZ refresh rate - and that the applications can run at its best at 60 frames per second (FPS).
+3. **DisplayLink Inactivity / Gaps:**
+   When scrolling stops or when Instagram pauses its internal render callbacks, no active `CADisplayLink` is voting for 120Hz, causing the system compositor to immediately drop the refresh rate.
 
-### Frame Interval
+4. **Double Buffering Bottlenecks in Metal:**
+   Using `maximumDrawableCount = 2` (double buffering) causes frame drops and pipeline hitches at 120Hz if GPU rendering slightly exceeds 8.33ms. Triple buffering (`maximumDrawableCount = 3`) is required for fluid 120Hz ProMotion pacing.
 
-There is a (now-deprecated) property of `CADisplayLink` called `frameInterval` that the developers can set to limit the FPS. If set to `1`, the FPS is 60. This is true according to the underlying logic of `setFrameInterval:` method:
+5. **`CADisableMinimumFrameDurationOnPhone` Missing:**
+   Third-party IPAs default to a 60Hz limit unless `CADisableMinimumFrameDurationOnPhone` is explicitly injected into `Info.plist`.
 
-![image](https://user-images.githubusercontent.com/3608783/135698671-df790125-cc65-4f5f-93bc-49744aea50c9.png)
+---
 
-Some applications out there choose `2` as a value, rendering the final FPS at `60/2 = 30` which doesn't sound cool for the devices that are capable of higher FPS.
+## How This Implementation Locks 120Hz Always
 
-This is where CAHighFPS enforces `frameInterval` so the effective rate matches the chosen FPS (`1` when using the display maximum).
+- **Zero-Dependency Native Swizzling (`CAHighFPS.m`):**
+  Uses pure Objective-C runtime method swizzling (`objc/runtime.h`). It does **not** link against CydiaSubstrate or ElleKit, meaning the `.dylib` can be injected directly into any sideloaded IPA without crashing on launch.
+- **Strict `minimum = 120.0f` Enforcement:**
+  All calls to `-[CADisplayLink setPreferredFrameRateRange:]` and `-[CAAnimation setPreferredFrameRateRange:]` are locked to `CAFrameRateRangeMake(120.0f, 120.0f, 120.0f)`. The compositor is never permitted to drop below 120Hz.
+- **Dedicated Keep-Alive Heartbeat Driver:**
+  A dedicated background `CADisplayLink` runs on `[NSRunLoop mainRunLoop]` for `NSRunLoopCommonModes` (covering both default and tracking/scrolling modes). This permanently asserts a 120Hz minimum request to `backboardd`, preventing any downclocking during slow scroll or deceleration.
+- **Auto-Paused in Background:**
+  The heartbeat driver pauses when the app goes into the background (`UIApplicationDidEnterBackgroundNotification` / `UIApplicationWillResignActiveNotification`) and resumes when active, preventing background battery drain.
+- **In-Memory Info.plist Patching:**
+  Automatically injects `CADisableMinimumFrameDurationOnPhone = YES` and `CADisableMinimumFrameDuration = YES` directly into the bundle dictionary at startup.
+- **Metal Triple Buffering:**
+  Forces `CAMetalLayer.maximumDrawableCount = 3` and clamps minimum presentation intervals to `1.0 / 120.0s`.
 
-### Preferred Frames Per Second
+---
 
-It is a substitute `CADisplayLink` property of `frameInterval` (until iOS 15.0), goes by the name `preferredFramesPerSecond`. If set to zero, the system will try to match the FPS to the [highest available refresh rate of the device](https://developer.apple.com/documentation/quartzcore/cadisplaylink/1648421-preferredframespersecond).
+## Building the .dylib with GitHub Actions
 
-Here's the underlying logic of `setPreferredFramesPerSecond:`:
+This repository includes a pre-configured GitHub Actions workflow in [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
-![image](https://user-images.githubusercontent.com/3608783/135698799-90669124-de3f-4e2f-8bcd-81ab5486f521.png)
+### Steps to Build:
+1. Push this repository to your GitHub account.
+2. In your repository on GitHub, navigate to the **Actions** tab.
+3. Select **Build CAHighFPS dylib** from the left sidebar.
+4. Click **Run workflow** -> **Run workflow**.
+5. Once completed, click the workflow run and download the **`CAHighFPS-dylib`** artifact containing `CAHighFPS.dylib`.
 
-Again, some applications can explicitly set it to `30` or `60`. Those devices that are capable of higher than that will not be so pleased.
+---
 
-This is where CAHighFPS enforces `preferredFramesPerSecond` to `0` (display maximum) or to the custom FPS you set.
+## Injecting into Instagram IPA
 
-### Preferred Framerate Range
+You can inject `CAHighFPS.dylib` into your Instagram `.ipa` using any standard injection tool:
 
-Introduced in [iOS 15](https://developer.apple.com/documentation/quartzcore/cadisplaylink/3875343-preferredframeraterange?language=objc), this is now their main way of dictating the effective FPS. By default, `preferred` and `maximum` of `CAFrameRateRange` are set to the highest supported FPS by the device. A custom FPS pins `minimum`, `preferred`, and `maximum` to that value.
+### Method 1: Using Sideloadly
+1. Open Sideloadly and select your `Instagram.ipa`.
+2. Click **Advanced Options**.
+3. Under **Inject dylibs/frameworks**, click **+** and select `CAHighFPS.dylib`.
+4. Choose **Cydia Substrate / Substitute: No (Standalone)** or default.
+5. Click **Start** to sign and install.
 
-## Part 2: CAMetalLayer
+### Method 2: Using TrollStore / Esign / Feather
+1. Import `Instagram.ipa` and `CAHighFPS.dylib` into Esign or Feather.
+2. Select the IPA -> **Signature / More** -> **Add Dylib** -> Select `CAHighFPS.dylib`.
+3. Sign and install with TrollStore or your certificate.
 
-Metal has been a thing since iOS 8. For some reasons, there are not a lot of discussions about optimizing Metal apps for ProMotion display. The best I found are to override `-[CAMetalLayer maximumDrawableCount]` ([reference](https://blog.csdn.net/ByteDanceTech/article/details/123437098)) and `-[CAMetalDrawable presentAfterMinimumDuration:]` to allow for ideal ProMotion FPS.
-
-## Everything Else
-
-### Battery: Does it drain your battery?
-
-Because CAHighFPS can enforce a higher FPS than an app chose, it's only natural that this will consume more energy. Draining may be significant or else. YMMV.
+### Method 3: Using Azule (macOS / Linux / CLI)
+```bash
+azule -i Instagram.ipa -o Instagram_120Hz.ipa -f CAHighFPS.dylib
+```
