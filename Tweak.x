@@ -67,6 +67,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 @property (nonatomic, assign) CFTimeInterval lastFlashTime;
 + (instancetype)sharedInstance;
 - (void)updateFPS:(int)fps;
+- (void)ensureSceneAttachment;
 @end
 
 @implementation FPSOverlayWindowTheos
@@ -80,11 +81,33 @@ static inline CAFrameRateRange GetTheosRange(void) {
     return overlay;
 }
 
+- (BOOL)canBecomeKeyWindow {
+    return NO;
+}
+
+- (void)ensureSceneAttachment {
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *currentScene = self.windowScene;
+        if (!currentScene || currentScene.activationState != UISceneActivationStateForegroundActive) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]] &&
+                    scene.activationState == UISceneActivationStateForegroundActive) {
+                    self.windowScene = (UIWindowScene *)scene;
+                    break;
+                }
+            }
+        }
+    }
+    if (self.hidden) {
+        self.hidden = NO;
+    }
+}
+
 - (instancetype)init {
     CGRect frame = CGRectMake(16, 60, 24, 24);
     self = [super initWithFrame:frame];
     if (self) {
-        self.windowLevel = UIWindowLevelStatusBar + 100;
+        self.windowLevel = UIWindowLevelAlert + 1000.0f;
         self.backgroundColor = [UIColor colorWithWhite:0.05f alpha:0.85f];
         self.layer.cornerRadius = 12.0f;
         self.layer.borderWidth = 1.5f;
@@ -110,6 +133,16 @@ static inline CAFrameRateRange GetTheosRange(void) {
         UIViewController *vc = [[UIViewController alloc] init];
         vc.view.backgroundColor = [UIColor clearColor];
         self.rootViewController = vc;
+
+        [self ensureSceneAttachment];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(ensureSceneAttachment)
+                                                     name:UISceneDidActivateNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(ensureSceneAttachment)
+                                                     name:UIWindowDidBecomeVisibleNotification
+                                                   object:nil];
 
         self.hidden = NO;
     }
@@ -161,6 +194,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (void)updateFPS:(int)fps {
+    [self ensureSceneAttachment];
     if (CACurrentMediaTime() - _lastFlashTime < 0.6) return;
     self.fpsLabel.text = [NSString stringWithFormat:@"%d", fps];
     if (fps >= 100) {

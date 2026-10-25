@@ -108,6 +108,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 @property (nonatomic, assign) CFTimeInterval lastFlashTime;
 + (instancetype)sharedInstance;
 - (void)updateFPS:(int)fps;
+- (void)ensureSceneAttachment;
 @end
 
 @implementation FPSOverlayWindow
@@ -121,12 +122,34 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     return overlay;
 }
 
+- (BOOL)canBecomeKeyWindow {
+    return NO;
+}
+
+- (void)ensureSceneAttachment {
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *currentScene = self.windowScene;
+        if (!currentScene || currentScene.activationState != UISceneActivationStateForegroundActive) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]] &&
+                    scene.activationState == UISceneActivationStateForegroundActive) {
+                    self.windowScene = (UIWindowScene *)scene;
+                    break;
+                }
+            }
+        }
+    }
+    if (self.hidden) {
+        self.hidden = NO;
+    }
+}
+
 - (instancetype)init {
     // 24px x 24px compact modal as requested
     CGRect frame = CGRectMake(16, 60, 24, 24);
     self = [super initWithFrame:frame];
     if (self) {
-        self.windowLevel = UIWindowLevelStatusBar + 100;
+        self.windowLevel = UIWindowLevelAlert + 1000.0f;
         self.backgroundColor = [UIColor colorWithWhite:0.05f alpha:0.85f];
         self.layer.cornerRadius = 12.0f; // circular pill
         self.layer.borderWidth = 1.5f;
@@ -152,6 +175,16 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         UIViewController *vc = [[UIViewController alloc] init];
         vc.view.backgroundColor = [UIColor clearColor];
         self.rootViewController = vc;
+
+        [self ensureSceneAttachment];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(ensureSceneAttachment)
+                                                     name:UISceneDidActivateNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(ensureSceneAttachment)
+                                                     name:UIWindowDidBecomeVisibleNotification
+                                                   object:nil];
 
         self.hidden = NO;
     }
@@ -204,6 +237,8 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 - (void)updateFPS:(int)fps {
+    [self ensureSceneAttachment];
+
     // Only update label if not currently flashing mode text from a tap
     if (CACurrentMediaTime() - _lastFlashTime < 0.6) return;
 
