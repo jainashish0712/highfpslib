@@ -117,9 +117,25 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
-    CGPoint translation = [pan translationInView:self.superview];
-    self.center = CGPointMake(self.center.x + translation.x, self.center.y + translation.y);
-    [pan setTranslation:CGPointMake(0, 0) inView:self.superview];
+    CGPoint translation = [pan translationInView:self];
+    CGRect frame = self.frame;
+    frame.origin.x += translation.x;
+    frame.origin.y += translation.y;
+
+    // Clamp within visible screen boundaries so the window NEVER disappears off-screen
+    CGRect screenBounds = [UIScreen mainScreen].bounds;
+    CGFloat minX = 4.0f;
+    CGFloat maxX = screenBounds.size.width - frame.size.width - 4.0f;
+    CGFloat minY = 28.0f;
+    CGFloat maxY = screenBounds.size.height - frame.size.height - 28.0f;
+
+    if (frame.origin.x < minX) frame.origin.x = minX;
+    if (frame.origin.x > maxX) frame.origin.x = maxX;
+    if (frame.origin.y < minY) frame.origin.y = minY;
+    if (frame.origin.y > maxY) frame.origin.y = maxY;
+
+    self.frame = frame;
+    [pan setTranslation:CGPointMake(0, 0) inView:self];
 }
 
 - (void)handleTap:(UITapGestureRecognizer *)tap {
