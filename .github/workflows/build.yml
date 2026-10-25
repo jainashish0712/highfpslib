@@ -31,7 +31,7 @@ jobs:
         run: |
           echo "Compiling and running automated test suite to prevent runtime crashes..."
           xcrun clang -O2 -fobjc-arc \
-            -framework Foundation -framework QuartzCore -framework Metal \
+            -framework Foundation -framework QuartzCore -framework Metal -framework CoreGraphics \
             -Wno-deprecated-declarations -Wno-unguarded-availability-new \
             tests/test_cahighfps.m CAHighFPS.m -o run_tests
           ./run_tests
@@ -53,6 +53,7 @@ jobs:
             -framework Foundation \
             -framework UIKit \
             -framework QuartzCore \
+            -framework CoreGraphics \
             -framework Metal \
             -install_name @rpath/CAHighFPS.dylib \
             CAHighFPS.m -o CAHighFPS.dylib

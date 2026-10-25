@@ -10,7 +10,7 @@ TWEAK_NAME = CAHighFPS
 
 $(TWEAK_NAME)_FILES = Tweak.x
 $(TWEAK_NAME)_CFLAGS = -fobjc-arc
-$(TWEAK_NAME)_FRAMEWORKS = UIKit QuartzCore Metal Foundation
+$(TWEAK_NAME)_FRAMEWORKS = UIKit QuartzCore Metal Foundation CoreGraphics
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
