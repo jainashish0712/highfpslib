@@ -108,6 +108,35 @@ int main(int argc, const char * argv[]) {
             printf("  - CAMetalLayer not present on this host environment\n");
         }
 
+        // TEST 6: Read-Only CAAnimation Safety (Spotify / LiveContainer fix)
+        printf("\n[Test 6] Testing Read-Only CAAnimation Safety (Spotify crash regression test)...\n");
+        CALayer *sourceLayer = [[CALayer alloc] init];
+        CALayer *destLayer = [[CALayer alloc] init];
+        CABasicAnimation *baseAnim = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        baseAnim.fromValue = @(0.0);
+        baseAnim.toValue = @(1.0);
+        [sourceLayer addAnimation:baseAnim forKey:@"testAnim"];
+
+        // An animation retrieved from a layer or action dictionary is marked read-only by CoreAnimation
+        CAAnimation *attachedAnim = [sourceLayer animationForKey:@"testAnim"];
+        if (attachedAnim) {
+            // Re-adding this read-only animation must NOT crash with "attempting to modify read-only animation"
+            [destLayer addAnimation:attachedAnim forKey:@"copiedAnim"];
+            printf("  ✓ [CALayer addAnimation:forKey:] with read-only animation executed safely without crash\n");
+
+            // Direct setter call on read-only animation must NOT crash
+            if ([attachedAnim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
+                [attachedAnim setValue:[NSValue valueWithBytes:&(CAFrameRateRange){120.0f, 120.0f, 120.0f}
+                                                      objCType:@encode(CAFrameRateRange)]
+                                forKey:@"preferredFrameRateRange"];
+                printf("  ✓ [CAAnimation setPreferredFrameRateRange:] on read-only animation caught safely\n");
+            }
+        } else {
+            // Even if running animation is detached immediately on headless host, re-adding baseAnim must succeed
+            [destLayer addAnimation:baseAnim forKey:@"copiedAnim"];
+            printf("  ✓ Secondary animation addition completed without crash\n");
+        }
+
         printf("\n========================================\n");
         printf("ALL TESTS PASSED SUCCESSFULLY! No crashes detected.\n");
         printf("========================================\n");

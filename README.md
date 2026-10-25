@@ -43,7 +43,7 @@ A tiny 24px x 24px circular badge floats over the UI:
 2. **`CADisplayLink` Lifecycle Enforcement**:
    Overrides `+displayLinkWithTarget:selector:` and `-addToRunLoop:forMode:` so that all internal display links are created and registered with explicit 120Hz ranges.
 3. **`CALayer addAnimation:forKey:` Interception**:
-   Forces all UIKit deceleration, spring, and offset animations to 120Hz.
+   Forces all UIKit deceleration, spring, and offset animations to 120Hz. Safely handles immutable and read-only action animations (such as those in Spotify and LiveContainer) via automatic defensive cloning.
 4. **Metal Triple Buffering**:
    Forces `CAMetalLayer.maximumDrawableCount = 3` to prevent GPU frame pipeline hitches at 120Hz.
 5. **Read-Only Info.plist Interception**:

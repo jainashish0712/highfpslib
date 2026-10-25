@@ -521,7 +521,11 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 @implementation CAAnimation (HighFPS)
 
 - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
-    [self highfps_setPreferredFrameRateRange:GetCurrentFrameRateRange()];
+    @try {
+        [self highfps_setPreferredFrameRateRange:GetCurrentFrameRateRange()];
+    } @catch (NSException *exception) {
+        // Safe fallback if animation is flagged read-only
+    }
 }
 
 - (CAFrameRateRange)highfps_preferredFrameRateRange {
@@ -539,13 +543,33 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 
 - (void)highfps_addAnimation:(CAAnimation *)anim forKey:(NSString *)key {
     if (anim && [anim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
-        anim.preferredFrameRateRange = GetCurrentFrameRateRange();
+        @try {
+            anim.preferredFrameRateRange = GetCurrentFrameRateRange();
+            [self highfps_addAnimation:anim forKey:key];
+            return;
+        } @catch (NSException *exception) {
+            // anim is marked read-only (common in Spotify/UIKit default action templates).
+            // Create a mutable copy to apply the 120Hz/60Hz rate range cleanly without crashing.
+            @try {
+                CAAnimation *mutableAnim = [anim copy];
+                if (mutableAnim && [mutableAnim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
+                    mutableAnim.preferredFrameRateRange = GetCurrentFrameRateRange();
+                    [self highfps_addAnimation:mutableAnim forKey:key];
+                    return;
+                }
+            } @catch (NSException *copyEx) {
+                // If copying also fails, fallback to adding original anim
+            }
+        }
     }
     [self highfps_addAnimation:anim forKey:key];
 }
 
 - (void)highfps_setFrameRateRange:(CAFrameRateRange)range {
-    [self highfps_setFrameRateRange:GetCurrentFrameRateRange()];
+    @try {
+        [self highfps_setFrameRateRange:GetCurrentFrameRateRange()];
+    } @catch (NSException *e) {
+    }
 }
 
 - (CAFrameRateRange)highfps_frameRateRange {

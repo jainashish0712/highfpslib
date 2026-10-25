@@ -385,7 +385,10 @@ static inline CAFrameRateRange GetTheosRange(void) {
 %hook CAAnimation
 
 - (void)setPreferredFrameRateRange:(CAFrameRateRange)range {
-    %orig(GetTheosRange());
+    @try {
+        %orig(GetTheosRange());
+    } @catch (NSException *e) {
+    }
 }
 
 - (CAFrameRateRange)preferredFrameRateRange {
@@ -398,13 +401,30 @@ static inline CAFrameRateRange GetTheosRange(void) {
 
 - (void)addAnimation:(CAAnimation *)anim forKey:(NSString *)key {
     if (anim && [anim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
-        anim.preferredFrameRateRange = GetTheosRange();
+        @try {
+            anim.preferredFrameRateRange = GetTheosRange();
+            %orig(anim, key);
+            return;
+        } @catch (NSException *exception) {
+            @try {
+                CAAnimation *mutableAnim = [anim copy];
+                if (mutableAnim && [mutableAnim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
+                    mutableAnim.preferredFrameRateRange = GetTheosRange();
+                    %orig(mutableAnim, key);
+                    return;
+                }
+            } @catch (NSException *copyEx) {
+            }
+        }
     }
     %orig(anim, key);
 }
 
 - (void)_setFrameRateRange:(CAFrameRateRange)range {
-    %orig(GetTheosRange());
+    @try {
+        %orig(GetTheosRange());
+    } @catch (NSException *e) {
+    }
 }
 
 - (CAFrameRateRange)_frameRateRange {
