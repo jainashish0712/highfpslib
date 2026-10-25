@@ -1,0 +1,75 @@
+name: Build CAHighFPS dylib
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build CAHighFPS.dylib
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode environment
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "Xcode Version:"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Compile CAHighFPS.dylib
+        run: |
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Using iPhoneOS SDK at: $SDK_PATH"
+          
+          # Compile universal arm64 + arm64e dylib using pure Objective-C runtime
+          # Zero external dependencies (no Substrate/ElleKit required)
+          xcrun -sdk iphoneos clang -O3 \
+            -arch arm64 -arch arm64e \
+            -shared -dynamiclib \
+            -fobjc-arc \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -framework Foundation \
+            -framework UIKit \
+            -framework QuartzCore \
+            -framework Metal \
+            -install_name @rpath/CAHighFPS.dylib \
+            CAHighFPS.m -o CAHighFPS.dylib
+
+      - name: Ad-hoc code sign dylib
+        run: |
+          codesign -f -s - CAHighFPS.dylib
+          echo "Binary details:"
+          file CAHighFPS.dylib
+          echo "Linked frameworks:"
+          otool -L CAHighFPS.dylib
+
+      - name: Package dylib as zip
+        run: |
+          zip -9 CAHighFPS.dylib.zip CAHighFPS.dylib
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CAHighFPS-dylib
+          path: |
+            CAHighFPS.dylib
+            CAHighFPS.dylib.zip
+
+      - name: Create Release (on Tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            CAHighFPS.dylib
+            CAHighFPS.dylib.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
