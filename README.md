@@ -37,8 +37,8 @@ Forces iOS applications (such as Instagram) to run at a continuous, locked **120
   A dedicated background `CADisplayLink` runs on `[NSRunLoop mainRunLoop]` for `NSRunLoopCommonModes` (covering both default and tracking/scrolling modes). This permanently asserts a 120Hz minimum request to `backboardd`, preventing any downclocking during slow scroll or deceleration.
 - **Auto-Paused in Background:**
   The heartbeat driver pauses when the app goes into the background (`UIApplicationDidEnterBackgroundNotification` / `UIApplicationWillResignActiveNotification`) and resumes when active, preventing background battery drain.
-- **In-Memory Info.plist Patching:**
-  Automatically injects `CADisableMinimumFrameDurationOnPhone = YES` and `CADisableMinimumFrameDuration = YES` directly into the bundle dictionary at startup.
+- **Dynamic Bundle Info Interception (Safe, Read-Only):**
+  Intercepts `-[NSBundle objectForInfoDictionaryKey:]` in a read-only, thread-safe manner to report `CADisableMinimumFrameDurationOnPhone = YES` without mutating the bundle's internal frozen dictionary.
 - **Metal Triple Buffering:**
   Forces `CAMetalLayer.maximumDrawableCount = 3` and clamps minimum presentation intervals to `1.0 / 120.0s`.
 
@@ -48,12 +48,11 @@ Forces iOS applications (such as Instagram) to run at a continuous, locked **120
 
 This repository includes a pre-configured GitHub Actions workflow in [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
-### Steps to Build:
-1. Push this repository to your GitHub account.
-2. In your repository on GitHub, navigate to the **Actions** tab.
-3. Select **Build CAHighFPS dylib** from the left sidebar.
-4. Click **Run workflow** -> **Run workflow**.
-5. Once completed, click the workflow run and download the **`CAHighFPS-dylib`** artifact containing `CAHighFPS.dylib`.
+### Automated Workflow:
+- Triggers automatically on **every push to any branch**, pull request, and tag.
+- Automatically compiles and executes runtime verification tests (`tests/test_cahighfps.m`) to catch regressions and prevent runtime crashes.
+- Compiles a universal `arm64` + `arm64e` binary for iOS 15.0+.
+- Automatically attaches **`CAHighFPS.dylib`** directly to the GitHub Release.
 
 ---
 

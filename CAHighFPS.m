@@ -1,9 +1,13 @@
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <Metal/Metal.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#include <TargetConditionals.h>
+
+#if TARGET_OS_IOS
+#import <UIKit/UIKit.h>
+#endif
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -51,19 +55,6 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     }
 }
 
-#pragma mark - Info.plist ProMotion Injection
-
-static void InjectPlistKeys(void) {
-    CFBundleRef mainBundle = CFBundleGetMainBundle();
-    if (mainBundle) {
-        CFMutableDictionaryRef infoDict = (CFMutableDictionaryRef)CFBundleGetInfoDictionary(mainBundle);
-        if (infoDict) {
-            CFDictionarySetValue(infoDict, CFSTR("CADisableMinimumFrameDurationOnPhone"), kCFBooleanTrue);
-            CFDictionarySetValue(infoDict, CFSTR("CADisableMinimumFrameDuration"), kCFBooleanTrue);
-        }
-    }
-}
-
 #pragma mark - Heartbeat DisplayLink Driver (Prevents 80Hz/90Hz Fluctuation)
 
 @interface HighFPSDriver : NSObject
@@ -89,6 +80,7 @@ static void InjectPlistKeys(void) {
 - (instancetype)init {
     self = [super init];
     if (self) {
+#if TARGET_OS_IOS
         NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
         [nc addObserver:self
                selector:@selector(start)
@@ -106,6 +98,7 @@ static void InjectPlistKeys(void) {
                selector:@selector(pause)
                    name:UIApplicationDidEnterBackgroundNotification
                  object:nil];
+#endif
     }
     return self;
 }
@@ -116,29 +109,46 @@ static void InjectPlistKeys(void) {
 }
 
 - (void)start {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self start];
+        });
+        return;
+    }
+
     if (self.displayLink) {
         self.displayLink.paused = NO;
         return;
     }
 
-    self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(onDisplayLinkTick:)];
+    @try {
+        self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(onDisplayLinkTick:)];
 
-    if (@available(iOS 15.0, *)) {
-        self.displayLink.preferredFrameRateRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
-    }
+        if (@available(iOS 15.0, macOS 12.0, *)) {
+            self.displayLink.preferredFrameRateRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
+        }
 
-    if ([self.displayLink respondsToSelector:@selector(setPreferredFramesPerSecond:)]) {
-        self.displayLink.preferredFramesPerSecond = TARGET_FPS_INT;
-    }
-    if ([self.displayLink respondsToSelector:@selector(setFrameInterval:)]) {
-        self.displayLink.frameInterval = 1;
-    }
+        if ([self.displayLink respondsToSelector:@selector(setPreferredFramesPerSecond:)]) {
+            self.displayLink.preferredFramesPerSecond = TARGET_FPS_INT;
+        }
+        if ([self.displayLink respondsToSelector:@selector(setFrameInterval:)]) {
+            self.displayLink.frameInterval = 1;
+        }
 
-    // Adding to NSRunLoopCommonModes covers both NSDefaultRunLoopMode and UITrackingRunLoopMode (scrolling)
-    [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+        [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    } @catch (NSException *exception) {
+        NSLog(@"[CAHighFPS] Warning: Failed to initialize heartbeat display link: %@", exception);
+    }
 }
 
 - (void)resume {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self resume];
+        });
+        return;
+    }
+
     if (self.displayLink) {
         self.displayLink.paused = NO;
     } else {
@@ -147,12 +157,26 @@ static void InjectPlistKeys(void) {
 }
 
 - (void)pause {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self pause];
+        });
+        return;
+    }
+
     if (self.displayLink) {
         self.displayLink.paused = YES;
     }
 }
 
 - (void)stop {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self stop];
+        });
+        return;
+    }
+
     if (self.displayLink) {
         [self.displayLink invalidate];
         self.displayLink = nil;
@@ -169,7 +193,6 @@ static void InjectPlistKeys(void) {
 @implementation CADisplayLink (HighFPS)
 
 - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
-    // Force minimum, maximum, and preferred to 120 so the compositor cannot downclock
     CAFrameRateRange lockedRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
     [self highfps_setPreferredFrameRateRange:lockedRange];
 }
@@ -214,6 +237,7 @@ static void InjectPlistKeys(void) {
 
 @end
 
+#if TARGET_OS_IOS
 #pragma mark - UIScreen Hooks
 
 @interface UIScreen (HighFPS)
@@ -231,6 +255,7 @@ static void InjectPlistKeys(void) {
 }
 
 @end
+#endif
 
 #pragma mark - CAMetalLayer Hooks
 
@@ -240,8 +265,6 @@ static void InjectPlistKeys(void) {
 @implementation CAMetalLayer (HighFPS)
 
 - (NSUInteger)highfps_maximumDrawableCount {
-    // Triple buffering (3 drawables) is required at 120Hz to prevent GPU pipeline stalls
-    // that cause drops to 80/90Hz.
     return 3;
 }
 
@@ -251,7 +274,7 @@ static void InjectPlistKeys(void) {
 
 @end
 
-#pragma mark - NSBundle Hooks
+#pragma mark - NSBundle Hooks (Safe, Read-Only, No Dictionary Mutation)
 
 @interface NSBundle (HighFPS)
 @end
@@ -264,17 +287,6 @@ static void InjectPlistKeys(void) {
         return (id)kCFBooleanTrue;
     }
     return [self highfps_objectForInfoDictionaryKey:key];
-}
-
-- (NSDictionary *)highfps_infoDictionary {
-    NSDictionary *dict = [self highfps_infoDictionary];
-    if (dict && (!dict[@"CADisableMinimumFrameDurationOnPhone"] || !dict[@"CADisableMinimumFrameDuration"])) {
-        NSMutableDictionary *mDict = [dict mutableCopy];
-        mDict[@"CADisableMinimumFrameDurationOnPhone"] = (id)kCFBooleanTrue;
-        mDict[@"CADisableMinimumFrameDuration"] = (id)kCFBooleanTrue;
-        return [mDict copy];
-    }
-    return dict;
 }
 
 @end
@@ -298,99 +310,101 @@ static void highfps_presentDrawable_afterMinimumDuration(id self, SEL _cmd, id d
 #pragma mark - Initialization
 
 static void InitSwizzling(void) {
-    // 1. CADisplayLink
-    Class dlClass = [CADisplayLink class];
-    if (dlClass) {
-        if (class_getInstanceMethod(dlClass, @selector(setPreferredFrameRateRange:))) {
-            SwizzleInstanceMethod(dlClass, @selector(setPreferredFrameRateRange:), @selector(highfps_setPreferredFrameRateRange:));
-            SwizzleInstanceMethod(dlClass, @selector(preferredFrameRateRange), @selector(highfps_preferredFrameRateRange));
+    @try {
+        // 1. CADisplayLink
+        Class dlClass = [CADisplayLink class];
+        if (dlClass) {
+            if (class_getInstanceMethod(dlClass, @selector(setPreferredFrameRateRange:))) {
+                SwizzleInstanceMethod(dlClass, @selector(setPreferredFrameRateRange:), @selector(highfps_setPreferredFrameRateRange:));
+                SwizzleInstanceMethod(dlClass, @selector(preferredFrameRateRange), @selector(highfps_preferredFrameRateRange));
+            }
+            if (class_getInstanceMethod(dlClass, @selector(setPreferredFramesPerSecond:))) {
+                SwizzleInstanceMethod(dlClass, @selector(setPreferredFramesPerSecond:), @selector(highfps_setPreferredFramesPerSecond));
+                SwizzleInstanceMethod(dlClass, @selector(preferredFramesPerSecond), @selector(highfps_preferredFramesPerSecond));
+            }
+            if (class_getInstanceMethod(dlClass, @selector(setFrameInterval:))) {
+                SwizzleInstanceMethod(dlClass, @selector(setFrameInterval:), @selector(highfps_setFrameInterval:));
+                SwizzleInstanceMethod(dlClass, @selector(frameInterval), @selector(highfps_frameInterval));
+            }
         }
-        if (class_getInstanceMethod(dlClass, @selector(setPreferredFramesPerSecond:))) {
-            SwizzleInstanceMethod(dlClass, @selector(setPreferredFramesPerSecond:), @selector(highfps_setPreferredFramesPerSecond:));
-            SwizzleInstanceMethod(dlClass, @selector(preferredFramesPerSecond), @selector(highfps_preferredFramesPerSecond));
-        }
-        if (class_getInstanceMethod(dlClass, @selector(setFrameInterval:))) {
-            SwizzleInstanceMethod(dlClass, @selector(setFrameInterval:), @selector(highfps_setFrameInterval:));
-            SwizzleInstanceMethod(dlClass, @selector(frameInterval), @selector(highfps_frameInterval));
-        }
-    }
 
-    // 2. CAAnimation
-    Class animClass = [CAAnimation class];
-    if (animClass) {
-        if (class_getInstanceMethod(animClass, @selector(setPreferredFrameRateRange:))) {
-            SwizzleInstanceMethod(animClass, @selector(setPreferredFrameRateRange:), @selector(highfps_setPreferredFrameRateRange:));
-            SwizzleInstanceMethod(animClass, @selector(preferredFrameRateRange), @selector(highfps_preferredFrameRateRange));
+        // 2. CAAnimation
+        Class animClass = [CAAnimation class];
+        if (animClass) {
+            if (class_getInstanceMethod(animClass, @selector(setPreferredFrameRateRange:))) {
+                SwizzleInstanceMethod(animClass, @selector(setPreferredFrameRateRange:), @selector(highfps_setPreferredFrameRateRange:));
+                SwizzleInstanceMethod(animClass, @selector(preferredFrameRateRange), @selector(highfps_preferredFrameRateRange));
+            }
         }
-    }
 
-    // 3. UIScreen
-    Class screenClass = [UIScreen class];
-    if (screenClass) {
-        if (class_getInstanceMethod(screenClass, @selector(maximumFramesPerSecond))) {
-            SwizzleInstanceMethod(screenClass, @selector(maximumFramesPerSecond), @selector(highfps_maximumFramesPerSecond));
+#if TARGET_OS_IOS
+        // 3. UIScreen (iOS only)
+        Class screenClass = [UIScreen class];
+        if (screenClass) {
+            if (class_getInstanceMethod(screenClass, @selector(maximumFramesPerSecond))) {
+                SwizzleInstanceMethod(screenClass, @selector(maximumFramesPerSecond), @selector(highfps_maximumFramesPerSecond));
+            }
+            if (class_getInstanceMethod(screenClass, @selector(minimumFrameDuration))) {
+                SwizzleInstanceMethod(screenClass, @selector(minimumFrameDuration), @selector(highfps_minimumFrameDuration));
+            }
         }
-        if (class_getInstanceMethod(screenClass, @selector(minimumFrameDuration))) {
-            SwizzleInstanceMethod(screenClass, @selector(minimumFrameDuration), @selector(highfps_minimumFrameDuration));
-        }
-    }
+#endif
 
-    // 4. CAMetalLayer
-    Class metalLayerClass = objc_getClass("CAMetalLayer");
-    if (metalLayerClass) {
-        if (class_getInstanceMethod(metalLayerClass, @selector(maximumDrawableCount))) {
-            SwizzleInstanceMethod(metalLayerClass, @selector(maximumDrawableCount), @selector(highfps_maximumDrawableCount));
+        // 4. CAMetalLayer
+        Class metalLayerClass = objc_getClass("CAMetalLayer");
+        if (metalLayerClass) {
+            if (class_getInstanceMethod(metalLayerClass, @selector(maximumDrawableCount))) {
+                SwizzleInstanceMethod(metalLayerClass, @selector(maximumDrawableCount), @selector(highfps_maximumDrawableCount));
+            }
+            if (class_getInstanceMethod(metalLayerClass, @selector(setMaximumDrawableCount:))) {
+                SwizzleInstanceMethod(metalLayerClass, @selector(setMaximumDrawableCount:), @selector(highfps_setMaximumDrawableCount:));
+            }
         }
-        if (class_getInstanceMethod(metalLayerClass, @selector(setMaximumDrawableCount:))) {
-            SwizzleInstanceMethod(metalLayerClass, @selector(setMaximumDrawableCount:), @selector(highfps_setMaximumDrawableCount:));
-        }
-    }
 
-    // 5. Metal Presentation Functions
-    Class metalDrawableClass = objc_getClass("CAMetalDrawable");
-    if (metalDrawableClass) {
-        Method m = class_getInstanceMethod(metalDrawableClass, @selector(presentAfterMinimumDuration:));
-        if (m) {
-            orig_presentAfterMinimumDuration = (void (*)(id, SEL, CFTimeInterval))method_getImplementation(m);
-            method_setImplementation(m, (IMP)highfps_presentAfterMinimumDuration);
+        // 5. Metal Presentation Functions
+        Class metalDrawableClass = objc_getClass("CAMetalDrawable");
+        if (metalDrawableClass) {
+            Method m = class_getInstanceMethod(metalDrawableClass, @selector(presentAfterMinimumDuration:));
+            if (m) {
+                orig_presentAfterMinimumDuration = (void (*)(id, SEL, CFTimeInterval))method_getImplementation(m);
+                method_setImplementation(m, (IMP)highfps_presentAfterMinimumDuration);
+            }
         }
-    }
 
-    Class cmdBufferClass = objc_getClass("_MTLCommandBuffer") ?: objc_getClass("MTLCommandBuffer");
-    if (cmdBufferClass) {
-        Method m = class_getInstanceMethod(cmdBufferClass, @selector(presentDrawable:afterMinimumDuration:));
-        if (m) {
-            orig_presentDrawable_afterMinimumDuration = (void (*)(id, SEL, id, CFTimeInterval))method_getImplementation(m);
-            method_setImplementation(m, (IMP)highfps_presentDrawable_afterMinimumDuration);
+        Class cmdBufferClass = objc_getClass("_MTLCommandBuffer") ?: objc_getClass("MTLCommandBuffer");
+        if (cmdBufferClass) {
+            Method m = class_getInstanceMethod(cmdBufferClass, @selector(presentDrawable:afterMinimumDuration:));
+            if (m) {
+                orig_presentDrawable_afterMinimumDuration = (void (*)(id, SEL, id, CFTimeInterval))method_getImplementation(m);
+                method_setImplementation(m, (IMP)highfps_presentDrawable_afterMinimumDuration);
+            }
         }
-    }
 
-    // 6. NSBundle
-    Class bundleClass = [NSBundle class];
-    if (bundleClass) {
-        if (class_getInstanceMethod(bundleClass, @selector(objectForInfoDictionaryKey:))) {
-            SwizzleInstanceMethod(bundleClass, @selector(objectForInfoDictionaryKey:), @selector(highfps_objectForInfoDictionaryKey:));
+        // 6. NSBundle - Read-only interception (No mutating CFBundle dictionary)
+        Class bundleClass = [NSBundle class];
+        if (bundleClass) {
+            if (class_getInstanceMethod(bundleClass, @selector(objectForInfoDictionaryKey:))) {
+                SwizzleInstanceMethod(bundleClass, @selector(objectForInfoDictionaryKey:), @selector(highfps_objectForInfoDictionaryKey:));
+            }
         }
-        if (class_getInstanceMethod(bundleClass, @selector(infoDictionary))) {
-            SwizzleInstanceMethod(bundleClass, @selector(infoDictionary), @selector(highfps_infoDictionary));
-        }
+    } @catch (NSException *e) {
+        NSLog(@"[CAHighFPS] Warning during InitSwizzling: %@", e);
     }
 }
 
 __attribute__((constructor))
 static void CAHighFPS_Init(void) {
-    // 1. Inject CADisableMinimumFrameDurationOnPhone into main bundle Info.plist dictionary
-    InjectPlistKeys();
+    @autoreleasepool {
+        // Swizzle display, animation, screen, and bundle methods safely
+        InitSwizzling();
 
-    // 2. Swizzle display, animation, and screen methods
-    InitSwizzling();
+        // Start heartbeat driver on main runloop
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[HighFPSDriver sharedInstance] start];
+        });
 
-    // 3. Start heartbeat driver on main runloop
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[HighFPSDriver sharedInstance] start];
-    });
-
-    NSLog(@"[CAHighFPS] Successfully loaded into %@ - 120Hz locked.", [NSBundle mainBundle].bundleIdentifier);
+        NSLog(@"[CAHighFPS] Successfully loaded into %@ - 120Hz locked.", [NSBundle mainBundle].bundleIdentifier);
+    }
 }
 
 #pragma clang diagnostic pop

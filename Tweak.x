@@ -97,19 +97,6 @@ static BOOL shouldEnableForBundleIdentifier(NSString *bundleIdentifier) {
     return YES;
 }
 
-#pragma mark - Info.plist Injection
-
-static void injectPlistKeys(void) {
-    CFBundleRef mainBundle = CFBundleGetMainBundle();
-    if (mainBundle) {
-        CFMutableDictionaryRef infoDict = (CFMutableDictionaryRef)CFBundleGetInfoDictionary(mainBundle);
-        if (infoDict) {
-            CFDictionarySetValue(infoDict, CFSTR("CADisableMinimumFrameDurationOnPhone"), kCFBooleanTrue);
-            CFDictionarySetValue(infoDict, CFSTR("CADisableMinimumFrameDuration"), kCFBooleanTrue);
-        }
-    }
-}
-
 #pragma mark - Heartbeat DisplayLink Driver
 
 @interface HighFPSDriverTheos : NSObject
@@ -146,6 +133,12 @@ static void injectPlistKeys(void) {
 - (void)onDisplayLinkTick:(CADisplayLink *)link {}
 
 - (void)start {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self start];
+        });
+        return;
+    }
     if (self.displayLink) {
         self.displayLink.paused = NO;
         return;
@@ -165,6 +158,12 @@ static void injectPlistKeys(void) {
 }
 
 - (void)resume {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self resume];
+        });
+        return;
+    }
     if (self.displayLink) {
         self.displayLink.paused = NO;
     } else {
@@ -173,6 +172,12 @@ static void injectPlistKeys(void) {
 }
 
 - (void)pause {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self pause];
+        });
+        return;
+    }
     if (self.displayLink) {
         self.displayLink.paused = YES;
     }
@@ -279,7 +284,7 @@ static void injectPlistKeys(void) {
 
 %end
 
-#pragma mark - NSBundle Hooks
+#pragma mark - NSBundle Hooks (Safe, Read-Only, No Dictionary Mutation)
 
 %hook NSBundle
 
@@ -291,23 +296,11 @@ static void injectPlistKeys(void) {
     return %orig(key);
 }
 
-- (NSDictionary *)infoDictionary {
-    NSDictionary *dict = %orig;
-    if (dict && (!dict[@"CADisableMinimumFrameDurationOnPhone"] || !dict[@"CADisableMinimumFrameDuration"])) {
-        NSMutableDictionary *mDict = [dict mutableCopy];
-        mDict[@"CADisableMinimumFrameDurationOnPhone"] = @YES;
-        mDict[@"CADisableMinimumFrameDuration"] = @YES;
-        return [mDict copy];
-    }
-    return dict;
-}
-
 %end
 
 #pragma mark - Constructor
 
 %ctor {
-    injectPlistKeys();
     loadPreferences();
     if (shouldEnableForBundleIdentifier(NSBundle.mainBundle.bundleIdentifier)) {
         %init;

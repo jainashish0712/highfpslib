@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build CAHighFPS.dylib
+    name: Build & Verify CAHighFPS.dylib
     runs-on: macos-14
     steps:
       - name: Checkout repository
@@ -27,12 +27,21 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
 
-      - name: Compile CAHighFPS.dylib
+      - name: Run Runtime Verification Tests
+        run: |
+          echo "Compiling and running automated test suite to prevent runtime crashes..."
+          xcrun clang -O2 -fobjc-arc \
+            -framework Foundation -framework QuartzCore -framework Metal \
+            -Wno-deprecated-declarations -Wno-unguarded-availability-new \
+            tests/test_cahighfps.m CAHighFPS.m -o run_tests
+          ./run_tests
+
+      - name: Compile Universal iOS CAHighFPS.dylib
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           echo "Using iPhoneOS SDK at: $SDK_PATH"
           
-          # Universal arm64 + arm64e build targeting iOS 15.0+ (first iOS version with ProMotion on iPhone)
+          # Compile universal arm64 + arm64e iOS dylib
           xcrun -sdk iphoneos clang -O3 \
             -arch arm64 -arch arm64e \
             -shared -dynamiclib \
@@ -48,35 +57,29 @@ jobs:
             -install_name @rpath/CAHighFPS.dylib \
             CAHighFPS.m -o CAHighFPS.dylib
 
-      - name: Ad-hoc code sign dylib
+      - name: Code Sign and Verify Binary
         run: |
           codesign -f -s - CAHighFPS.dylib
           echo "Binary details:"
           file CAHighFPS.dylib
+          echo "Code signature status:"
+          codesign --verify --verbose CAHighFPS.dylib
           echo "Linked frameworks:"
           otool -L CAHighFPS.dylib
 
-      - name: Package dylib as zip
-        run: |
-          zip -9 CAHighFPS.dylib.zip CAHighFPS.dylib
-
-      - name: Upload Artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CAHighFPS-dylib
-          path: |
-            CAHighFPS.dylib
-            CAHighFPS.dylib.zip
+          name: CAHighFPS.dylib
+          path: CAHighFPS.dylib
 
-      - name: Create or Update Pre-Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'CAHighFPS Latest Build' }}
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          files: |
-            CAHighFPS.dylib
-            CAHighFPS.dylib.zip
+          files: CAHighFPS.dylib
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
