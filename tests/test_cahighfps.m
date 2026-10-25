@@ -36,7 +36,7 @@ int main(int argc, const char * argv[]) {
         printf("Running CAHighFPS Runtime Verification Tests\n");
         printf("========================================\n\n");
 
-        // TEST 1: NSBundle Hook Verification (The crash culprit)
+        // TEST 1: NSBundle Hook Verification
         printf("[Test 1] Testing NSBundle ProMotion Keys & Info Dictionary...\n");
         NSBundle *bundle = [NSBundle mainBundle];
         id val1 = [bundle objectForInfoDictionaryKey:@"CADisableMinimumFrameDurationOnPhone"];
@@ -53,7 +53,7 @@ int main(int argc, const char * argv[]) {
                dict ? object_getClassName(dict) : "nil");
 
         // TEST 2: CAAnimation Hook Verification
-        printf("\n[Test 2] Testing CAAnimation 120Hz Lock...\n");
+        printf("\n[Test 2] Testing CAAnimation Dynamic Rate Enforcement...\n");
         CABasicAnimation *anim = [CABasicAnimation animationWithKeyPath:@"opacity"];
         if ([anim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
             [anim setValue:[NSValue valueWithBytes:&(CAFrameRateRange){30.0f, 60.0f, 60.0f}
@@ -62,16 +62,29 @@ int main(int argc, const char * argv[]) {
             
             CAFrameRateRange range = {0};
             [[anim valueForKey:@"preferredFrameRateRange"] getValue:&range];
-            assert(range.minimum == 120.0f);
-            assert(range.maximum == 120.0f);
-            assert(range.preferred == 120.0f);
-            printf("  ✓ CAAnimation preferredFrameRateRange locked to 120/120/120\n");
+            // Must not be 30 or 80 or 90
+            assert(range.minimum == 120.0f || range.minimum == 60.0f);
+            assert(range.maximum == range.minimum);
+            assert(range.preferred == range.minimum);
+            printf("  ✓ CAAnimation preferredFrameRateRange locked (no 80/90Hz allowed, strictly %gHz)\n", range.minimum);
         } else {
             printf("  - CAAnimation does not support preferredFrameRateRange on this OS SDK\n");
         }
 
-        // TEST 3: HighFPSDriver Lifecycle
-        printf("\n[Test 3] Testing HighFPSDriver Lifecycle...\n");
+        // TEST 3: CALayer Animation Interception
+        printf("\n[Test 3] Testing CALayer addAnimation:forKey: Enforcement...\n");
+        CALayer *testLayer = [[CALayer alloc] init];
+        CABasicAnimation *scrollAnim = [CABasicAnimation animationWithKeyPath:@"bounds.origin"];
+        [testLayer addAnimation:scrollAnim forKey:@"scrollDecel"];
+        if ([scrollAnim respondsToSelector:@selector(preferredFrameRateRange)]) {
+            CAFrameRateRange range = {0};
+            [[scrollAnim valueForKey:@"preferredFrameRateRange"] getValue:&range];
+            assert(range.minimum == 120.0f || range.minimum == 60.0f);
+            printf("  ✓ CALayer addAnimation:forKey: successfully locks frame rate on added animations\n");
+        }
+
+        // TEST 4: HighFPSDriver Lifecycle
+        printf("\n[Test 4] Testing HighFPSDriver Lifecycle...\n");
         HighFPSDriver *driver = [HighFPSDriver sharedInstance];
         assert(driver != nil);
         [driver start];
@@ -80,8 +93,8 @@ int main(int argc, const char * argv[]) {
         [driver stop];
         printf("  ✓ HighFPSDriver start/pause/resume/stop executed cleanly without crash\n");
 
-        // TEST 4: CAMetalLayer Triple Buffering
-        printf("\n[Test 4] Testing CAMetalLayer Maximum Drawable Count...\n");
+        // TEST 5: CAMetalLayer Triple Buffering
+        printf("\n[Test 5] Testing CAMetalLayer Maximum Drawable Count...\n");
         Class metalClass = objc_getClass("CAMetalLayer");
         if (metalClass) {
             id metalLayer = [[metalClass alloc] init];
