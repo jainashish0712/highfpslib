@@ -1,9 +1,10 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #include <assert.h>
+#include <stdio.h>
 
-#ifndef CAFrameRateRange_DEFINED
 #if !__has_include(<QuartzCore/CAFrameRateRange.h>)
 typedef struct CAFrameRateRange {
     float minimum;
@@ -18,7 +19,6 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
     range.preferred = preferred;
     return range;
 }
-#endif
 #endif
 
 // Forward declarations from CAHighFPS
@@ -36,7 +36,7 @@ int main(int argc, const char * argv[]) {
         printf("Running CAHighFPS Runtime Verification Tests\n");
         printf("========================================\n\n");
 
-        // TEST 1: NSBundle Hook Verification
+        // TEST 1: NSBundle Hook Verification (The crash culprit)
         printf("[Test 1] Testing NSBundle ProMotion Keys & Info Dictionary...\n");
         NSBundle *bundle = [NSBundle mainBundle];
         id val1 = [bundle objectForInfoDictionaryKey:@"CADisableMinimumFrameDurationOnPhone"];
@@ -70,14 +70,8 @@ int main(int argc, const char * argv[]) {
             printf("  - CAAnimation does not support preferredFrameRateRange on this OS SDK\n");
         }
 
-        // TEST 3: CADisplayLink Hook Verification
-        printf("\n[Test 3] Testing CADisplayLink Hooks...\n");
-        Class dlClass = [CADisplayLink class];
-        assert(dlClass != Nil);
-        printf("  ✓ CADisplayLink class found\n");
-
-        // TEST 4: HighFPSDriver Lifecycle
-        printf("\n[Test 4] Testing HighFPSDriver Lifecycle...\n");
+        // TEST 3: HighFPSDriver Lifecycle
+        printf("\n[Test 3] Testing HighFPSDriver Lifecycle...\n");
         HighFPSDriver *driver = [HighFPSDriver sharedInstance];
         assert(driver != nil);
         [driver start];
@@ -86,13 +80,14 @@ int main(int argc, const char * argv[]) {
         [driver stop];
         printf("  ✓ HighFPSDriver start/pause/resume/stop executed cleanly without crash\n");
 
-        // TEST 5: CAMetalLayer Triple Buffering
-        printf("\n[Test 5] Testing CAMetalLayer Maximum Drawable Count...\n");
+        // TEST 4: CAMetalLayer Triple Buffering
+        printf("\n[Test 4] Testing CAMetalLayer Maximum Drawable Count...\n");
         Class metalClass = objc_getClass("CAMetalLayer");
         if (metalClass) {
             id metalLayer = [[metalClass alloc] init];
             if ([metalLayer respondsToSelector:@selector(maximumDrawableCount)]) {
-                NSUInteger count = ((NSUInteger (*)(id, SEL))objc_msgSend)(metalLayer, @selector(maximumDrawableCount));
+                NSUInteger (*msgSendFunc)(id, SEL) = (NSUInteger (*)(id, SEL))objc_msgSend;
+                NSUInteger count = msgSendFunc(metalLayer, @selector(maximumDrawableCount));
                 assert(count == 3);
                 printf("  ✓ CAMetalLayer maximumDrawableCount correctly returns 3 (triple buffering)\n");
             }

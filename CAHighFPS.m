@@ -58,7 +58,9 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 #pragma mark - Heartbeat DisplayLink Driver (Prevents 80Hz/90Hz Fluctuation)
 
 @interface HighFPSDriver : NSObject
+#if TARGET_OS_IOS
 @property (nonatomic, strong) CADisplayLink *displayLink;
+#endif
 + (instancetype)sharedInstance;
 - (void)start;
 - (void)stop;
@@ -103,10 +105,12 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     return self;
 }
 
+#if TARGET_OS_IOS
 - (void)onDisplayLinkTick:(CADisplayLink *)link {
     // Keep-alive heartbeat: an active CADisplayLink with min=120, max=120, pref=120
     // on NSRunLoopCommonModes ensures backboardd/QuartzCore never throttles down to 80Hz/90Hz.
 }
+#endif
 
 - (void)start {
     if (![NSThread isMainThread]) {
@@ -116,6 +120,7 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         return;
     }
 
+#if TARGET_OS_IOS
     if (self.displayLink) {
         self.displayLink.paused = NO;
         return;
@@ -124,7 +129,7 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     @try {
         self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(onDisplayLinkTick:)];
 
-        if (@available(iOS 15.0, macOS 12.0, *)) {
+        if (@available(iOS 15.0, *)) {
             self.displayLink.preferredFrameRateRange = CAFrameRateRangeMake(TARGET_FPS, TARGET_FPS, TARGET_FPS);
         }
 
@@ -139,6 +144,7 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     } @catch (NSException *exception) {
         NSLog(@"[CAHighFPS] Warning: Failed to initialize heartbeat display link: %@", exception);
     }
+#endif
 }
 
 - (void)resume {
@@ -149,11 +155,13 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         return;
     }
 
+#if TARGET_OS_IOS
     if (self.displayLink) {
         self.displayLink.paused = NO;
     } else {
         [self start];
     }
+#endif
 }
 
 - (void)pause {
@@ -164,9 +172,11 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         return;
     }
 
+#if TARGET_OS_IOS
     if (self.displayLink) {
         self.displayLink.paused = YES;
     }
+#endif
 }
 
 - (void)stop {
@@ -177,15 +187,18 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         return;
     }
 
+#if TARGET_OS_IOS
     if (self.displayLink) {
         [self.displayLink invalidate];
         self.displayLink = nil;
     }
+#endif
 }
 
 @end
 
-#pragma mark - CADisplayLink Hooks
+#if TARGET_OS_IOS
+#pragma mark - CADisplayLink Hooks (iOS)
 
 @interface CADisplayLink (HighFPS)
 @end
@@ -218,6 +231,7 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 @end
+#endif
 
 #pragma mark - CAAnimation Hooks
 
@@ -238,7 +252,7 @@ static void SwizzleInstanceMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 @end
 
 #if TARGET_OS_IOS
-#pragma mark - UIScreen Hooks
+#pragma mark - UIScreen Hooks (iOS)
 
 @interface UIScreen (HighFPS)
 @end
@@ -311,7 +325,8 @@ static void highfps_presentDrawable_afterMinimumDuration(id self, SEL _cmd, id d
 
 static void InitSwizzling(void) {
     @try {
-        // 1. CADisplayLink
+#if TARGET_OS_IOS
+        // 1. CADisplayLink (iOS only)
         Class dlClass = [CADisplayLink class];
         if (dlClass) {
             if (class_getInstanceMethod(dlClass, @selector(setPreferredFrameRateRange:))) {
@@ -327,6 +342,7 @@ static void InitSwizzling(void) {
                 SwizzleInstanceMethod(dlClass, @selector(frameInterval), @selector(highfps_frameInterval));
             }
         }
+#endif
 
         // 2. CAAnimation
         Class animClass = [CAAnimation class];
@@ -380,7 +396,7 @@ static void InitSwizzling(void) {
             }
         }
 
-        // 6. NSBundle - Read-only interception (No mutating CFBundle dictionary)
+        // 6. NSBundle - Safe Read-only Interception (No mutating CFBundle dictionary)
         Class bundleClass = [NSBundle class];
         if (bundleClass) {
             if (class_getInstanceMethod(bundleClass, @selector(objectForInfoDictionaryKey:))) {
@@ -395,10 +411,8 @@ static void InitSwizzling(void) {
 __attribute__((constructor))
 static void CAHighFPS_Init(void) {
     @autoreleasepool {
-        // Swizzle display, animation, screen, and bundle methods safely
         InitSwizzling();
 
-        // Start heartbeat driver on main runloop
         dispatch_async(dispatch_get_main_queue(), ^{
             [[HighFPSDriver sharedInstance] start];
         });
