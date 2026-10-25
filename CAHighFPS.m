@@ -143,10 +143,10 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         _fpsLabel.minimumScaleFactor = 0.5;
         [self addSubview:_fpsLabel];
 
-        _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self selector:@selector(handlePan:)];
+        _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:_panGesture];
 
-        _tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self selector:@selector(handleTap:)];
+        _tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
         [self addGestureRecognizer:_tapGesture];
 
         UIViewController *vc = [[UIViewController alloc] init];
