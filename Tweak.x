@@ -47,8 +47,8 @@ static inline BOOL IsTheosMotionActive(void) {
     if (s_theosMode == FPSModeTheosLock120) return YES;
     if (s_theosIsInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 50ms (0.05s) micro-settle buffer to ensure subpixel glide finishes
-    return (now - s_theosLastMovementTime) < 0.05;
+    // 200ms (0.20s) settle buffer ensures UIKit's exponential deceleration tail has 100% finished
+    return (now - s_theosLastMovementTime) < 0.20;
 }
 
 static inline float GetTheosTargetFPS(void) {
@@ -263,7 +263,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
         if (s_theosIsInteracting) {
             self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
         } else {
-            double remaining = (0.05 - (now - s_theosLastMovementTime)) * 1000.0;
+            double remaining = (0.20 - (now - s_theosLastMovementTime)) * 1000.0;
             if (remaining < 0) remaining = 0;
             self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
         }
@@ -558,7 +558,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (CFTimeInterval)minimumFrameDuration {
-    return (1.0 / GetTheosTargetFPS());
+    return (1.0 / FPS_HIGH);
 }
 
 %end
@@ -578,7 +578,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 %hook CAMetalDrawable
 
 - (void)presentAfterMinimumDuration:(CFTimeInterval)duration {
-    %orig(1.0 / GetTheosTargetFPS());
+    %orig(1.0 / FPS_HIGH);
 }
 
 %end
@@ -586,7 +586,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 %hook MTLCommandBuffer
 
 - (void)presentDrawable:(id)drawable afterMinimumDuration:(CFTimeInterval)minimumDuration {
-    %orig(drawable, 1.0 / GetTheosTargetFPS());
+    %orig(drawable, 1.0 / FPS_HIGH);
 }
 
 %end

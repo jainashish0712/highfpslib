@@ -55,8 +55,8 @@ static inline BOOL IsMotionActive(void) {
     if (s_fpsMode == FPSModeLock120) return YES;
     if (s_isInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 50ms (0.05s) micro-settle buffer to ensure subpixel glide finishes
-    return (now - s_lastMovementTime) < 0.05;
+    // 200ms (0.20s) settle buffer ensures UIKit's exponential deceleration tail has 100% finished
+    return (now - s_lastMovementTime) < 0.20;
 }
 
 static inline float GetEffectiveTargetFPS(void) {
@@ -297,7 +297,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         if (s_isInteracting) {
             self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
         } else {
-            double remaining = (0.05 - (now - s_lastMovementTime)) * 1000.0;
+            double remaining = (0.20 - (now - s_lastMovementTime)) * 1000.0;
             if (remaining < 0) remaining = 0;
             self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
         }
@@ -611,7 +611,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 - (CFTimeInterval)highfps_minimumFrameDuration {
-    return (1.0 / GetEffectiveTargetFPS());
+    return (1.0 / FPS_HIGH);
 }
 
 @end
@@ -717,14 +717,14 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 static void (*orig_presentAfterMinimumDuration)(id self, SEL _cmd, CFTimeInterval duration);
 static void highfps_presentAfterMinimumDuration(id self, SEL _cmd, CFTimeInterval duration) {
     if (orig_presentAfterMinimumDuration) {
-        orig_presentAfterMinimumDuration(self, _cmd, 1.0 / GetEffectiveTargetFPS());
+        orig_presentAfterMinimumDuration(self, _cmd, 1.0 / FPS_HIGH);
     }
 }
 
 static void (*orig_presentDrawable_afterMinimumDuration)(id self, SEL _cmd, id drawable, CFTimeInterval duration);
 static void highfps_presentDrawable_afterMinimumDuration(id self, SEL _cmd, id drawable, CFTimeInterval duration) {
     if (orig_presentDrawable_afterMinimumDuration) {
-        orig_presentDrawable_afterMinimumDuration(self, _cmd, drawable, 1.0 / GetEffectiveTargetFPS());
+        orig_presentDrawable_afterMinimumDuration(self, _cmd, drawable, 1.0 / FPS_HIGH);
     }
 }
 
