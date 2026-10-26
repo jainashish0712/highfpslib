@@ -28,24 +28,23 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 
 typedef NS_ENUM(NSInteger, FPSModeTheos) {
     FPSModeTheosAuto = 0,
-    FPSModeTheosLock120 = 1,
-    FPSModeTheosLock1 = 2,
-    FPSModeTheosLock60 = FPSModeTheosLock1
+    FPSModeTheosLock120 = 1
 };
 
 static FPSModeTheos s_theosMode = FPSModeTheosAuto;
+static const CFTimeInterval s_theosCooldownOptions[] = { 0.45, 0.15, 0.25, 0.01 };
+static const int s_theosNumCooldownOptions = 4;
+static int s_theosCooldownIndex = 0;
 static CFTimeInterval s_theosLastInteraction = 0.0;
 static BOOL s_theosIsInteracting = NO;
 
 static inline BOOL IsTheosScrollActive(void) {
     if (s_theosMode == FPSModeTheosLock120) return YES;
-    if (s_theosMode == FPSModeTheosLock1) return NO;
     if (s_theosIsInteracting) return YES;
-    return (CACurrentMediaTime() - s_theosLastInteraction) < 0.45;
+    return (CACurrentMediaTime() - s_theosLastInteraction) < s_theosCooldownOptions[s_theosCooldownIndex];
 }
 
 static inline float GetTheosTargetFPS(void) {
-    if (s_theosMode == FPSModeTheosLock1) return FPS_LOW;
     if (s_theosMode == FPSModeTheosLock120) return FPS_HIGH;
     return IsTheosScrollActive() ? FPS_HIGH : FPS_LOW;
 }
@@ -59,10 +58,12 @@ static inline CAFrameRateRange GetTheosRange(void) {
 @property (assign) CGFloat drawableTimeoutSeconds;
 @end
 
-#pragma mark - 24x24 HUD Overlay (Theos)
+#pragma mark - Floating Dual-Meter (FPS + Cooldown) HUD Overlay (Theos)
 
 @interface FPSOverlayWindowTheos : UIWindow
 @property (nonatomic, strong) UILabel *fpsLabel;
+@property (nonatomic, strong) UILabel *cooldownLabel;
+@property (nonatomic, strong) UIView *separatorView;
 @property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
 @property (nonatomic, strong) UITapGestureRecognizer *tapGesture;
 @property (nonatomic, assign) CFTimeInterval lastFlashTime;
@@ -105,7 +106,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (instancetype)init {
-    CGRect frame = CGRectMake(16, 60, 24, 24);
+    CGRect frame = CGRectMake(16, 60, 72, 24);
     self = [super initWithFrame:frame];
     if (self) {
         self.windowLevel = UIWindowLevelAlert + 1000.0f;
@@ -116,7 +117,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
         self.layer.masksToBounds = YES;
         self.clipsToBounds = YES;
 
-        _fpsLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
+        _fpsLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 32, 24)];
         _fpsLabel.textAlignment = NSTextAlignmentCenter;
         _fpsLabel.font = [UIFont monospacedDigitSystemFontOfSize:9.0 weight:UIFontWeightBold];
         _fpsLabel.textColor = [UIColor whiteColor];
@@ -124,6 +125,19 @@ static inline CAFrameRateRange GetTheosRange(void) {
         _fpsLabel.adjustsFontSizeToFitWidth = YES;
         _fpsLabel.minimumScaleFactor = 0.5;
         [self addSubview:_fpsLabel];
+
+        _separatorView = [[UIView alloc] initWithFrame:CGRectMake(32, 4, 1, 16)];
+        _separatorView.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.25f];
+        [self addSubview:_separatorView];
+
+        _cooldownLabel = [[UILabel alloc] initWithFrame:CGRectMake(33, 0, 39, 24)];
+        _cooldownLabel.textAlignment = NSTextAlignmentCenter;
+        _cooldownLabel.font = [UIFont monospacedDigitSystemFontOfSize:8.5 weight:UIFontWeightBold];
+        _cooldownLabel.textColor = [UIColor colorWithRed:1.0f green:0.82f blue:0.2f alpha:1.0f];
+        _cooldownLabel.text = @"0.45s";
+        _cooldownLabel.adjustsFontSizeToFitWidth = YES;
+        _cooldownLabel.minimumScaleFactor = 0.5;
+        [self addSubview:_cooldownLabel];
 
         _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:_panGesture];
@@ -156,7 +170,6 @@ static inline CAFrameRateRange GetTheosRange(void) {
     frame.origin.x += translation.x;
     frame.origin.y += translation.y;
 
-    // Clamp within visible screen boundaries so the window NEVER disappears off-screen
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     CGFloat minX = 4.0f;
     CGFloat maxX = screenBounds.size.width - frame.size.width - 4.0f;
@@ -173,29 +186,42 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (void)handleTap:(UITapGestureRecognizer *)tap {
-    s_theosMode = (s_theosMode + 1) % 3;
+    CGPoint loc = [tap locationInView:self];
+    if (loc.x <= 32.0f) {
+        // Toggle FPS mode: Auto (0) <-> Locked 120 (1)
+        s_theosMode = (s_theosMode + 1) % 2;
 
-    if (@available(iOS 10.0, *)) {
-        UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-        [haptic impactOccurred];
-    }
+        if (@available(iOS 10.0, *)) {
+            UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+            [haptic impactOccurred];
+        }
 
-    _lastFlashTime = CACurrentMediaTime();
-    NSString *modeText = @"A";
-    UIColor *color = [UIColor colorWithRed:0.2f green:0.75f blue:1.0f alpha:1.0f];
-    if (s_theosMode == FPSModeTheosLock120) {
-        modeText = @"120";
-        color = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f];
-    } else if (s_theosMode == FPSModeTheosLock1) {
-        modeText = @"1";
-        color = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:1.0f];
+        _lastFlashTime = CACurrentMediaTime();
+        NSString *modeText = @"A";
+        UIColor *borderColor = [UIColor colorWithRed:0.2f green:0.75f blue:1.0f alpha:1.0f]; // Blue for Auto
+        if (s_theosMode == FPSModeTheosLock120) {
+            modeText = @"120";
+            borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f]; // Green
+        }
+        self.fpsLabel.text = modeText;
+        self.layer.borderColor = borderColor.CGColor;
+    } else {
+        // Toggle Cooldown meter: 0.45s -> 0.15s -> 0.25s -> 0.01s
+        s_theosCooldownIndex = (s_theosCooldownIndex + 1) % s_theosNumCooldownOptions;
+
+        if (@available(iOS 10.0, *)) {
+            UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [haptic impactOccurred];
+        }
+
+        CFTimeInterval cd = s_theosCooldownOptions[s_theosCooldownIndex];
+        self.cooldownLabel.text = [NSString stringWithFormat:@"%.2fs", cd];
     }
-    self.fpsLabel.text = modeText;
-    self.layer.borderColor = color.CGColor;
 }
 
 - (void)updateFPS:(int)fps {
     [self ensureSceneAttachment];
+
     if (CACurrentMediaTime() - _lastFlashTime < 0.6) return;
     self.fpsLabel.text = [NSString stringWithFormat:@"%d", fps];
     if (fps >= 100) {

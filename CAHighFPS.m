@@ -36,12 +36,13 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 
 typedef NS_ENUM(NSInteger, FPSMode) {
     FPSModeAuto = 0,    // Pixel style: 120Hz active scrolling, 1Hz still view
-    FPSModeLock120 = 1, // Locked 120Hz constantly
-    FPSModeLock1 = 2,   // Locked 1Hz constantly
-    FPSModeLock60 = FPSModeLock1
+    FPSModeLock120 = 1  // Locked 120Hz constantly
 };
 
 static FPSMode s_fpsMode = FPSModeAuto;
+static const CFTimeInterval s_cooldownOptions[] = { 0.45, 0.15, 0.25, 0.01 };
+static const int s_numCooldownOptions = 4;
+static int s_cooldownIndex = 0;
 static CFTimeInterval s_lastInteractionTime = 0.0;
 static BOOL s_isInteracting = NO;
 
@@ -49,24 +50,19 @@ static BOOL s_isInteracting = NO;
 
 static inline BOOL IsScrollActive(void) {
     if (s_fpsMode == FPSModeLock120) return YES;
-    if (s_fpsMode == FPSModeLock1) return NO;
 
     if (s_isInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 0.45s coasting window to ensure low-velocity deceleration glides to a stop at 120Hz
-    return (now - s_lastInteractionTime) < 0.45;
+    return (now - s_lastInteractionTime) < s_cooldownOptions[s_cooldownIndex];
 }
 
 static inline float GetEffectiveTargetFPS(void) {
-    if (s_fpsMode == FPSModeLock1) return FPS_LOW;
     if (s_fpsMode == FPSModeLock120) return FPS_HIGH;
     return IsScrollActive() ? FPS_HIGH : FPS_LOW;
 }
 
 static inline CAFrameRateRange GetCurrentFrameRateRange(void) {
     float fps = GetEffectiveTargetFPS();
-    // Force minimum, maximum, and preferred to the exact same rate.
-    // This physically prevents iOS compositor from dropping to 80Hz or 90Hz during scrolling.
     return CAFrameRateRangeMake(fps, fps, fps);
 }
 
@@ -100,10 +96,12 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 #if TARGET_OS_IOS
-#pragma mark - 24x24 Floating FPS Picker & HUD Overlay
+#pragma mark - Floating Dual-Meter (FPS + Cooldown) HUD Overlay
 
 @interface FPSOverlayWindow : UIWindow
 @property (nonatomic, strong) UILabel *fpsLabel;
+@property (nonatomic, strong) UILabel *cooldownLabel;
+@property (nonatomic, strong) UIView *separatorView;
 @property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
 @property (nonatomic, strong) UITapGestureRecognizer *tapGesture;
 @property (nonatomic, assign) CFTimeInterval lastFlashTime;
@@ -146,19 +144,18 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 - (instancetype)init {
-    // 24px x 24px compact modal as requested
-    CGRect frame = CGRectMake(16, 60, 24, 24);
+    CGRect frame = CGRectMake(16, 60, 72, 24);
     self = [super initWithFrame:frame];
     if (self) {
         self.windowLevel = UIWindowLevelAlert + 1000.0f;
         self.backgroundColor = [UIColor colorWithWhite:0.05f alpha:0.85f];
-        self.layer.cornerRadius = 12.0f; // circular pill
+        self.layer.cornerRadius = 12.0f;
         self.layer.borderWidth = 1.5f;
         self.layer.borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f].CGColor;
         self.layer.masksToBounds = YES;
         self.clipsToBounds = YES;
 
-        _fpsLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
+        _fpsLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 32, 24)];
         _fpsLabel.textAlignment = NSTextAlignmentCenter;
         _fpsLabel.font = [UIFont monospacedDigitSystemFontOfSize:9.0 weight:UIFontWeightBold];
         _fpsLabel.textColor = [UIColor whiteColor];
@@ -166,6 +163,19 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         _fpsLabel.adjustsFontSizeToFitWidth = YES;
         _fpsLabel.minimumScaleFactor = 0.5;
         [self addSubview:_fpsLabel];
+
+        _separatorView = [[UIView alloc] initWithFrame:CGRectMake(32, 4, 1, 16)];
+        _separatorView.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.25f];
+        [self addSubview:_separatorView];
+
+        _cooldownLabel = [[UILabel alloc] initWithFrame:CGRectMake(33, 0, 39, 24)];
+        _cooldownLabel.textAlignment = NSTextAlignmentCenter;
+        _cooldownLabel.font = [UIFont monospacedDigitSystemFontOfSize:8.5 weight:UIFontWeightBold];
+        _cooldownLabel.textColor = [UIColor colorWithRed:1.0f green:0.82f blue:0.2f alpha:1.0f];
+        _cooldownLabel.text = @"0.45s";
+        _cooldownLabel.adjustsFontSizeToFitWidth = YES;
+        _cooldownLabel.minimumScaleFactor = 0.5;
+        [self addSubview:_cooldownLabel];
 
         _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:_panGesture];
@@ -198,12 +208,11 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     frame.origin.x += translation.x;
     frame.origin.y += translation.y;
 
-    // Clamp within visible screen boundaries so the window NEVER disappears off-screen
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     CGFloat minX = 4.0f;
     CGFloat maxX = screenBounds.size.width - frame.size.width - 4.0f;
-    CGFloat minY = 28.0f; // Safe top (below notch / dynamic island)
-    CGFloat maxY = screenBounds.size.height - frame.size.height - 28.0f; // Safe bottom
+    CGFloat minY = 28.0f;
+    CGFloat maxY = screenBounds.size.height - frame.size.height - 28.0f;
 
     if (frame.origin.x < minX) frame.origin.x = minX;
     if (frame.origin.x > maxX) frame.origin.x = maxX;
@@ -215,32 +224,42 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 - (void)handleTap:(UITapGestureRecognizer *)tap {
-    // Cycle: Auto (Pixel 120/1) -> Locked 120 -> Locked 1 -> Auto
-    s_fpsMode = (s_fpsMode + 1) % 3;
+    CGPoint loc = [tap locationInView:self];
+    if (loc.x <= 32.0f) {
+        // Tap on FPS meter: cycle between Auto (A) and Locked 120 (120)
+        s_fpsMode = (s_fpsMode + 1) % 2;
 
-    if (@available(iOS 10.0, *)) {
-        UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-        [haptic impactOccurred];
-    }
+        if (@available(iOS 10.0, *)) {
+            UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+            [haptic impactOccurred];
+        }
 
-    _lastFlashTime = CACurrentMediaTime();
-    NSString *modeText = @"A";
-    UIColor *borderColor = [UIColor colorWithRed:0.2f green:0.75f blue:1.0f alpha:1.0f]; // Blue for Auto
-    if (s_fpsMode == FPSModeLock120) {
-        modeText = @"120";
-        borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f]; // Green
-    } else if (s_fpsMode == FPSModeLock1) {
-        modeText = @"1";
-        borderColor = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:1.0f]; // Orange
+        _lastFlashTime = CACurrentMediaTime();
+        NSString *modeText = @"A";
+        UIColor *borderColor = [UIColor colorWithRed:0.2f green:0.75f blue:1.0f alpha:1.0f]; // Blue for Auto
+        if (s_fpsMode == FPSModeLock120) {
+            modeText = @"120";
+            borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f]; // Green
+        }
+        self.fpsLabel.text = modeText;
+        self.layer.borderColor = borderColor.CGColor;
+    } else {
+        // Tap on Cooldown meter: toggle between 0.45s, 0.15s, 0.25s, 0.01s
+        s_cooldownIndex = (s_cooldownIndex + 1) % s_numCooldownOptions;
+
+        if (@available(iOS 10.0, *)) {
+            UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [haptic impactOccurred];
+        }
+
+        CFTimeInterval cd = s_cooldownOptions[s_cooldownIndex];
+        self.cooldownLabel.text = [NSString stringWithFormat:@"%.2fs", cd];
     }
-    self.fpsLabel.text = modeText;
-    self.layer.borderColor = borderColor.CGColor;
 }
 
 - (void)updateFPS:(int)fps {
     [self ensureSceneAttachment];
 
-    // Only update label if not currently flashing mode text from a tap
     if (CACurrentMediaTime() - _lastFlashTime < 0.6) return;
 
     self.fpsLabel.text = [NSString stringWithFormat:@"%d", fps];
@@ -295,7 +314,6 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 
 #if TARGET_OS_IOS
 - (void)onDisplayLinkTick:(CADisplayLink *)link {
-    // Dynamically adjust frame rate range: 120Hz while scrolling, 1Hz when still
     CAFrameRateRange range = GetCurrentFrameRateRange();
     if (@available(iOS 15.0, *)) {
         link.preferredFrameRateRange = range;
@@ -320,7 +338,6 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     }
 
 #if TARGET_OS_IOS
-    // Initialize 24px x 24px HUD Overlay
     [FPSOverlayWindow sharedInstance];
 
     if (self.displayLink) {
@@ -437,7 +454,10 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
-    [self highfps_setPreferredFrameRateRange:GetCurrentFrameRateRange()];
+    @try {
+        [self highfps_setPreferredFrameRateRange:GetCurrentFrameRateRange()];
+    } @catch (NSException *e) {
+    }
 }
 
 - (CAFrameRateRange)highfps_preferredFrameRateRange {
@@ -559,8 +579,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
     @try {
         [self highfps_setPreferredFrameRateRange:GetCurrentFrameRateRange()];
-    } @catch (NSException *exception) {
-        // Safe fallback if animation is flagged read-only
+    } @catch (NSException *e) {
     }
 }
 
@@ -584,8 +603,6 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
             [self highfps_addAnimation:anim forKey:key];
             return;
         } @catch (NSException *exception) {
-            // anim is marked read-only (common in Spotify/UIKit default action templates).
-            // Create a mutable copy to apply the 120Hz/60Hz rate range cleanly without crashing.
             @try {
                 CAAnimation *mutableAnim = [anim copy];
                 if (mutableAnim && [mutableAnim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
@@ -594,7 +611,6 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
                     return;
                 }
             } @catch (NSException *copyEx) {
-                // If copying also fails, fallback to adding original anim
             }
         }
     }
