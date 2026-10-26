@@ -41,29 +41,21 @@ typedef NS_ENUM(NSInteger, FPSMode) {
 
 typedef NS_ENUM(NSInteger, GovernorState) {
     GovernorStateIdle = 0,   // 1Hz Deep Sleep
-    GovernorStateActive = 1  // 120Hz Active Motion / Tap Interaction
+    GovernorStateActive = 1  // 120Hz Active Motion
 };
 
 static FPSMode s_fpsMode = FPSModeAuto;
 static GovernorState s_currentState = GovernorStateIdle;
-static CFTimeInterval s_lastTouchTime = 0.0;
 static CFTimeInterval s_lastMovementTime = 0.0;
 static BOOL s_isInteracting = NO;
 
 #pragma mark - Zero-Stutter Kinematic Refresh Governor
 
-static inline BOOL IsTouchActive(void) {
-    if (s_isInteracting) return YES;
-    CFTimeInterval now = CACurrentMediaTime();
-    // Keep touches, button clicks, and menu presentations active at 120Hz for at least 0.50s
-    return (now - s_lastTouchTime) < 0.50;
-}
-
 static inline BOOL IsMotionActive(void) {
     if (s_fpsMode == FPSModeLock120) return YES;
-    if (IsTouchActive()) return YES;
+    if (s_isInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 50ms (0.05s) micro-settle buffer to ensure scroll subpixel glide finishes
+    // 50ms (0.05s) micro-settle buffer to ensure subpixel glide finishes
     return (now - s_lastMovementTime) < 0.05;
 }
 
@@ -303,15 +295,11 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         self.layer.borderColor = greenColor.CGColor;
 
         if (s_isInteracting) {
-            self.detailLabel.text = @"TOUCH HELD (120Hz)";
-        } else if ((now - s_lastTouchTime) < 0.50) {
-            double remaining = (0.50 - (now - s_lastTouchTime)) * 1000.0;
-            if (remaining < 0) remaining = 0;
-            self.detailLabel.text = [NSString stringWithFormat:@"TAP/CLICK ACTIVE (%.0fms)", remaining];
+            self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
         } else {
             double remaining = (0.05 - (now - s_lastMovementTime)) * 1000.0;
             if (remaining < 0) remaining = 0;
-            self.detailLabel.text = [NSString stringWithFormat:@"SCROLL SETTLING (%.0fms)", remaining];
+            self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
         }
         self.detailLabel.textColor = [UIColor colorWithWhite:0.85f alpha:1.0f];
     } else {
@@ -321,8 +309,6 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         self.layer.borderColor = blueColor.CGColor;
 
         double idleSeconds = now - s_lastMovementTime;
-        if (now - s_lastTouchTime < idleSeconds) idleSeconds = now - s_lastTouchTime;
-        if (idleSeconds < 0) idleSeconds = 0;
         self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | 1Hz SLEEP (IDLE %.1fs)", idleSeconds];
         self.detailLabel.textColor = blueColor;
     }
@@ -571,7 +557,6 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 @implementation UIGestureRecognizer (HighFPS)
 
 - (void)highfps_setFrameRateRange:(CAFrameRateRange)range {
-    s_lastTouchTime = CACurrentMediaTime();
     s_lastMovementTime = CACurrentMediaTime();
     [self highfps_setFrameRateRange:GetCurrentFrameRateRange()];
 }
@@ -582,46 +567,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 
 @end
 
-#pragma mark - UIApplication, UIControl & UIWindow Touch & Click Interception
-
-@interface UIApplication (HighFPS)
-@end
-
-@implementation UIApplication (HighFPS)
-
-- (void)highfps_sendEvent:(UIEvent *)event {
-    if (event.type == UIEventTypeTouches) {
-        NSSet *touches = [event allTouches];
-        for (UITouch *touch in touches) {
-            if (touch.phase == UITouchPhaseBegan || touch.phase == UITouchPhaseMoved || touch.phase == UITouchPhaseStationary) {
-                s_isInteracting = YES;
-                s_lastTouchTime = CACurrentMediaTime();
-                s_lastMovementTime = CACurrentMediaTime();
-                break;
-            } else if (touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
-                s_isInteracting = NO;
-                s_lastTouchTime = CACurrentMediaTime();
-                s_lastMovementTime = CACurrentMediaTime();
-            }
-        }
-    }
-    [self highfps_sendEvent:event];
-}
-
-@end
-
-@interface UIControl (HighFPS)
-@end
-
-@implementation UIControl (HighFPS)
-
-- (BOOL)highfps_sendAction:(SEL)action to:(id)target forEvent:(UIEvent *)event {
-    s_lastTouchTime = CACurrentMediaTime();
-    s_lastMovementTime = CACurrentMediaTime();
-    return [self highfps_sendAction:action to:target forEvent:event];
-}
-
-@end
+#pragma mark - UIWindow Pre-Emptive Touch-Down Event Interception
 
 @interface UIWindow (HighFPS)
 @end
@@ -632,14 +578,17 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     if (event.type == UIEventTypeTouches) {
         NSSet *touches = [event allTouches];
         for (UITouch *touch in touches) {
-            if (touch.phase == UITouchPhaseBegan || touch.phase == UITouchPhaseMoved || touch.phase == UITouchPhaseStationary) {
+            if (touch.phase == UITouchPhaseBegan) {
+                // Way 2: Pre-emptive 120Hz trigger the microsecond skin touches glass
                 s_isInteracting = YES;
-                s_lastTouchTime = CACurrentMediaTime();
+                s_lastMovementTime = CACurrentMediaTime();
+                break;
+            } else if (touch.phase == UITouchPhaseMoved) {
+                s_isInteracting = YES;
                 s_lastMovementTime = CACurrentMediaTime();
                 break;
             } else if (touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
                 s_isInteracting = NO;
-                s_lastTouchTime = CACurrentMediaTime();
                 s_lastMovementTime = CACurrentMediaTime();
             }
         }
@@ -668,7 +617,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 @end
 #endif
 
-#pragma mark - CAAnimation Hooks (Smooth 120Hz Animations & Menu Transitions)
+#pragma mark - CAAnimation Hooks
 
 @interface CAAnimation (HighFPS)
 @end
@@ -677,14 +626,13 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 
 - (void)highfps_setPreferredFrameRateRange:(CAFrameRateRange)range {
     @try {
-        // Guarantee animations never drop below 60Hz and run up to 120Hz
-        [self highfps_setPreferredFrameRateRange:CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH)];
+        [self highfps_setPreferredFrameRateRange:GetCurrentFrameRateRange()];
     } @catch (NSException *e) {
     }
 }
 
 - (CAFrameRateRange)highfps_preferredFrameRateRange {
-    return CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH);
+    return GetCurrentFrameRateRange();
 }
 
 @end
@@ -699,18 +647,14 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 - (void)highfps_addAnimation:(CAAnimation *)anim forKey:(NSString *)key {
     if (anim && [anim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
         @try {
-            anim.preferredFrameRateRange = CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH);
-            CFTimeInterval duration = (anim.duration > 0.05) ? anim.duration : 0.40;
-            s_lastTouchTime = CACurrentMediaTime() + duration;
+            anim.preferredFrameRateRange = GetCurrentFrameRateRange();
             [self highfps_addAnimation:anim forKey:key];
             return;
         } @catch (NSException *exception) {
             @try {
                 CAAnimation *mutableAnim = [anim copy];
                 if (mutableAnim && [mutableAnim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
-                    mutableAnim.preferredFrameRateRange = CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH);
-                    CFTimeInterval duration = (mutableAnim.duration > 0.05) ? mutableAnim.duration : 0.40;
-                    s_lastTouchTime = CACurrentMediaTime() + duration;
+                    mutableAnim.preferredFrameRateRange = GetCurrentFrameRateRange();
                     [self highfps_addAnimation:mutableAnim forKey:key];
                     return;
                 }
@@ -842,17 +786,7 @@ static void InitSwizzling(void) {
             }
         }
 
-        // 4. UIApplication, UIControl & UIWindow (Touch events & clicks)
-        Class appClass = [UIApplication class];
-        if (appClass && class_getInstanceMethod(appClass, @selector(sendEvent:))) {
-            SwizzleInstanceMethod(appClass, @selector(sendEvent:), @selector(highfps_sendEvent:));
-        }
-
-        Class ctrlClass = [UIControl class];
-        if (ctrlClass && class_getInstanceMethod(ctrlClass, @selector(sendAction:to:forEvent:))) {
-            SwizzleInstanceMethod(ctrlClass, @selector(sendAction:to:forEvent:), @selector(highfps_sendAction:to:forEvent:));
-        }
-
+        // 4. UIWindow (Touch events)
         Class winClass = [UIWindow class];
         if (winClass) {
             if (class_getInstanceMethod(winClass, @selector(sendEvent:))) {

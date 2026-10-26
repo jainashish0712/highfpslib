@@ -33,29 +33,21 @@ typedef NS_ENUM(NSInteger, FPSModeTheos) {
 
 typedef NS_ENUM(NSInteger, GovernorStateTheos) {
     GovernorStateTheosIdle = 0,   // 1Hz Deep Sleep
-    GovernorStateTheosActive = 1  // 120Hz Active Motion / Tap Interaction
+    GovernorStateTheosActive = 1  // 120Hz Active Motion
 };
 
 static FPSModeTheos s_theosMode = FPSModeTheosAuto;
 static GovernorStateTheos s_theosCurrentState = GovernorStateTheosIdle;
-static CFTimeInterval s_theosLastTouchTime = 0.0;
 static CFTimeInterval s_theosLastMovementTime = 0.0;
 static BOOL s_theosIsInteracting = NO;
 
 #pragma mark - Zero-Stutter Kinematic Refresh Governor (Theos)
 
-static inline BOOL IsTheosTouchActive(void) {
-    if (s_theosIsInteracting) return YES;
-    CFTimeInterval now = CACurrentMediaTime();
-    // Keep touches, button clicks, and menu presentations active at 120Hz for at least 0.50s
-    return (now - s_theosLastTouchTime) < 0.50;
-}
-
 static inline BOOL IsTheosMotionActive(void) {
     if (s_theosMode == FPSModeTheosLock120) return YES;
-    if (IsTheosTouchActive()) return YES;
+    if (s_theosIsInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 50ms (0.05s) micro-settle buffer to ensure scroll subpixel glide finishes
+    // 50ms (0.05s) micro-settle buffer to ensure subpixel glide finishes
     return (now - s_theosLastMovementTime) < 0.05;
 }
 
@@ -269,15 +261,11 @@ static inline CAFrameRateRange GetTheosRange(void) {
         self.layer.borderColor = greenColor.CGColor;
 
         if (s_theosIsInteracting) {
-            self.detailLabel.text = @"TOUCH HELD (120Hz)";
-        } else if ((now - s_theosLastTouchTime) < 0.50) {
-            double remaining = (0.50 - (now - s_theosLastTouchTime)) * 1000.0;
-            if (remaining < 0) remaining = 0;
-            self.detailLabel.text = [NSString stringWithFormat:@"TAP/CLICK ACTIVE (%.0fms)", remaining];
+            self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
         } else {
             double remaining = (0.05 - (now - s_theosLastMovementTime)) * 1000.0;
             if (remaining < 0) remaining = 0;
-            self.detailLabel.text = [NSString stringWithFormat:@"SCROLL SETTLING (%.0fms)", remaining];
+            self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
         }
         self.detailLabel.textColor = [UIColor colorWithWhite:0.85f alpha:1.0f];
     } else {
@@ -287,8 +275,6 @@ static inline CAFrameRateRange GetTheosRange(void) {
         self.layer.borderColor = blueColor.CGColor;
 
         double idleSeconds = now - s_theosLastMovementTime;
-        if (now - s_theosLastTouchTime < idleSeconds) idleSeconds = now - s_theosLastTouchTime;
-        if (idleSeconds < 0) idleSeconds = 0;
         self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | 1Hz SLEEP (IDLE %.1fs)", idleSeconds];
         self.detailLabel.textColor = blueColor;
     }
@@ -477,7 +463,6 @@ static inline CAFrameRateRange GetTheosRange(void) {
 %hook UIGestureRecognizer
 
 - (void)_setFrameRateRange:(CAFrameRateRange)range {
-    s_theosLastTouchTime = CACurrentMediaTime();
     s_theosLastMovementTime = CACurrentMediaTime();
     %orig(GetTheosRange());
 }
@@ -488,53 +473,23 @@ static inline CAFrameRateRange GetTheosRange(void) {
 
 %end
 
-%hook UIApplication
-
-- (void)sendEvent:(UIEvent *)event {
-    if (event.type == UIEventTypeTouches) {
-        NSSet *touches = [event allTouches];
-        for (UITouch *touch in touches) {
-            if (touch.phase == UITouchPhaseBegan || touch.phase == UITouchPhaseMoved || touch.phase == UITouchPhaseStationary) {
-                s_theosIsInteracting = YES;
-                s_theosLastTouchTime = CACurrentMediaTime();
-                s_theosLastMovementTime = CACurrentMediaTime();
-                break;
-            } else if (touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
-                s_theosIsInteracting = NO;
-                s_theosLastTouchTime = CACurrentMediaTime();
-                s_theosLastMovementTime = CACurrentMediaTime();
-            }
-        }
-    }
-    %orig(event);
-}
-
-%end
-
-%hook UIControl
-
-- (BOOL)sendAction:(SEL)action to:(id)target forEvent:(UIEvent *)event {
-    s_theosLastTouchTime = CACurrentMediaTime();
-    s_theosLastMovementTime = CACurrentMediaTime();
-    return %orig(action, target, event);
-}
-
-%end
-
 %hook UIWindow
 
 - (void)sendEvent:(UIEvent *)event {
     if (event.type == UIEventTypeTouches) {
         NSSet *touches = [event allTouches];
         for (UITouch *touch in touches) {
-            if (touch.phase == UITouchPhaseBegan || touch.phase == UITouchPhaseMoved || touch.phase == UITouchPhaseStationary) {
+            if (touch.phase == UITouchPhaseBegan) {
+                // Way 2: Pre-emptive 120Hz trigger the microsecond skin touches glass
                 s_theosIsInteracting = YES;
-                s_theosLastTouchTime = CACurrentMediaTime();
+                s_theosLastMovementTime = CACurrentMediaTime();
+                break;
+            } else if (touch.phase == UITouchPhaseMoved) {
+                s_theosIsInteracting = YES;
                 s_theosLastMovementTime = CACurrentMediaTime();
                 break;
             } else if (touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
                 s_theosIsInteracting = NO;
-                s_theosLastTouchTime = CACurrentMediaTime();
                 s_theosLastMovementTime = CACurrentMediaTime();
             }
         }
@@ -548,13 +503,13 @@ static inline CAFrameRateRange GetTheosRange(void) {
 
 - (void)setPreferredFrameRateRange:(CAFrameRateRange)range {
     @try {
-        %orig(CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH));
+        %orig(GetTheosRange());
     } @catch (NSException *e) {
     }
 }
 
 - (CAFrameRateRange)preferredFrameRateRange {
-    return CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH);
+    return GetTheosRange();
 }
 
 %end
@@ -564,18 +519,14 @@ static inline CAFrameRateRange GetTheosRange(void) {
 - (void)addAnimation:(CAAnimation *)anim forKey:(NSString *)key {
     if (anim && [anim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
         @try {
-            anim.preferredFrameRateRange = CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH);
-            CFTimeInterval duration = (anim.duration > 0.05) ? anim.duration : 0.40;
-            s_theosLastTouchTime = CACurrentMediaTime() + duration;
+            anim.preferredFrameRateRange = GetTheosRange();
             %orig(anim, key);
             return;
         } @catch (NSException *exception) {
             @try {
                 CAAnimation *mutableAnim = [anim copy];
                 if (mutableAnim && [mutableAnim respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
-                    mutableAnim.preferredFrameRateRange = CAFrameRateRangeMake(FPS_HIGH, FPS_HIGH, FPS_HIGH);
-                    CFTimeInterval duration = (mutableAnim.duration > 0.05) ? mutableAnim.duration : 0.40;
-                    s_theosLastTouchTime = CACurrentMediaTime() + duration;
+                    mutableAnim.preferredFrameRateRange = GetTheosRange();
                     %orig(mutableAnim, key);
                     return;
                 }
