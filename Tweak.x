@@ -27,26 +27,42 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 #define FPS_LOW_INT 1
 
 typedef NS_ENUM(NSInteger, FPSModeTheos) {
-    FPSModeTheosAuto = 0,
-    FPSModeTheosLock120 = 1
+    FPSModeTheosAuto = 0,    // Dynamic 120Hz active / 1Hz idle
+    FPSModeTheosLock120 = 1  // Force 120Hz constant
+};
+
+typedef NS_ENUM(NSInteger, GovernorStateTheos) {
+    GovernorStateTheosIdle = 0,   // 1Hz Deep Sleep
+    GovernorStateTheosActive = 1  // 120Hz Active Motion
 };
 
 static FPSModeTheos s_theosMode = FPSModeTheosAuto;
-static const CFTimeInterval s_theosCooldownOptions[] = { 0.45, 0.15, 0.25, 0.01 };
-static const int s_theosNumCooldownOptions = 4;
-static int s_theosCooldownIndex = 0;
-static CFTimeInterval s_theosLastInteraction = 0.0;
+static GovernorStateTheos s_theosCurrentState = GovernorStateTheosIdle;
+static CFTimeInterval s_theosLastMovementTime = 0.0;
 static BOOL s_theosIsInteracting = NO;
 
-static inline BOOL IsTheosScrollActive(void) {
+#pragma mark - Zero-Stutter Kinematic Refresh Governor (Theos)
+
+static inline BOOL IsTheosMotionActive(void) {
     if (s_theosMode == FPSModeTheosLock120) return YES;
     if (s_theosIsInteracting) return YES;
-    return (CACurrentMediaTime() - s_theosLastInteraction) < s_theosCooldownOptions[s_theosCooldownIndex];
+    CFTimeInterval now = CACurrentMediaTime();
+    // 50ms (0.05s) micro-settle buffer to ensure subpixel glide finishes
+    return (now - s_theosLastMovementTime) < 0.05;
 }
 
 static inline float GetTheosTargetFPS(void) {
-    if (s_theosMode == FPSModeTheosLock120) return FPS_HIGH;
-    return IsTheosScrollActive() ? FPS_HIGH : FPS_LOW;
+    if (s_theosMode == FPSModeTheosLock120) {
+        s_theosCurrentState = GovernorStateTheosActive;
+        return FPS_HIGH;
+    }
+    if (IsTheosMotionActive()) {
+        s_theosCurrentState = GovernorStateTheosActive;
+        return FPS_HIGH;
+    } else {
+        s_theosCurrentState = GovernorStateTheosIdle;
+        return FPS_LOW;
+    }
 }
 
 static inline CAFrameRateRange GetTheosRange(void) {
@@ -58,17 +74,18 @@ static inline CAFrameRateRange GetTheosRange(void) {
 @property (assign) CGFloat drawableTimeoutSeconds;
 @end
 
-#pragma mark - Floating Dual-Meter (FPS + Cooldown) HUD Overlay (Theos)
+#pragma mark - Real-Time Live Tracker HUD Modal (Rich Debug Display Theos)
 
 @interface FPSOverlayWindowTheos : UIWindow
 @property (nonatomic, strong) UILabel *fpsLabel;
-@property (nonatomic, strong) UILabel *cooldownLabel;
-@property (nonatomic, strong) UIView *separatorView;
+@property (nonatomic, strong) UILabel *stateLabel;
+@property (nonatomic, strong) UILabel *detailLabel;
+@property (nonatomic, strong) UIView *separatorLine;
 @property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
 @property (nonatomic, strong) UITapGestureRecognizer *tapGesture;
 @property (nonatomic, assign) CFTimeInterval lastFlashTime;
 + (instancetype)sharedInstance;
-- (void)updateFPS:(int)fps;
+- (void)updateDebugWithFPS:(int)fps durationMs:(double)ms state:(GovernorStateTheos)state;
 - (void)ensureSceneAttachment;
 @end
 
@@ -106,38 +123,47 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (instancetype)init {
-    CGRect frame = CGRectMake(16, 60, 72, 24);
+    CGRect frame = CGRectMake(16, 60, 144, 36);
     self = [super initWithFrame:frame];
     if (self) {
         self.windowLevel = UIWindowLevelAlert + 1000.0f;
-        self.backgroundColor = [UIColor colorWithWhite:0.05f alpha:0.85f];
-        self.layer.cornerRadius = 12.0f;
+        self.backgroundColor = [UIColor colorWithWhite:0.04f alpha:0.92f];
+        self.layer.cornerRadius = 8.0f;
         self.layer.borderWidth = 1.5f;
-        self.layer.borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f].CGColor;
+        self.layer.borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.46f alpha:1.0f].CGColor;
         self.layer.masksToBounds = YES;
         self.clipsToBounds = YES;
 
-        _fpsLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 32, 24)];
-        _fpsLabel.textAlignment = NSTextAlignmentCenter;
-        _fpsLabel.font = [UIFont monospacedDigitSystemFontOfSize:9.0 weight:UIFontWeightBold];
+        _fpsLabel = [[UILabel alloc] initWithFrame:CGRectMake(6, 2, 92, 16)];
+        _fpsLabel.textAlignment = NSTextAlignmentLeft;
+        _fpsLabel.font = [UIFont monospacedDigitSystemFontOfSize:8.5 weight:UIFontWeightBold];
         _fpsLabel.textColor = [UIColor whiteColor];
-        _fpsLabel.text = @"120";
+        _fpsLabel.text = @"120 FPS (8.3ms)";
         _fpsLabel.adjustsFontSizeToFitWidth = YES;
-        _fpsLabel.minimumScaleFactor = 0.5;
+        _fpsLabel.minimumScaleFactor = 0.6;
         [self addSubview:_fpsLabel];
 
-        _separatorView = [[UIView alloc] initWithFrame:CGRectMake(32, 4, 1, 16)];
-        _separatorView.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.25f];
-        [self addSubview:_separatorView];
+        _stateLabel = [[UILabel alloc] initWithFrame:CGRectMake(100, 2, 38, 16)];
+        _stateLabel.textAlignment = NSTextAlignmentRight;
+        _stateLabel.font = [UIFont monospacedDigitSystemFontOfSize:8.5 weight:UIFontWeightBold];
+        _stateLabel.textColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.46f alpha:1.0f];
+        _stateLabel.text = @"[ACT]";
+        _stateLabel.adjustsFontSizeToFitWidth = YES;
+        _stateLabel.minimumScaleFactor = 0.6;
+        [self addSubview:_stateLabel];
 
-        _cooldownLabel = [[UILabel alloc] initWithFrame:CGRectMake(33, 0, 39, 24)];
-        _cooldownLabel.textAlignment = NSTextAlignmentCenter;
-        _cooldownLabel.font = [UIFont monospacedDigitSystemFontOfSize:8.5 weight:UIFontWeightBold];
-        _cooldownLabel.textColor = [UIColor colorWithRed:1.0f green:0.82f blue:0.2f alpha:1.0f];
-        _cooldownLabel.text = @"0.45s";
-        _cooldownLabel.adjustsFontSizeToFitWidth = YES;
-        _cooldownLabel.minimumScaleFactor = 0.5;
-        [self addSubview:_cooldownLabel];
+        _separatorLine = [[UIView alloc] initWithFrame:CGRectMake(4, 18, 136, 1)];
+        _separatorLine.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.18f];
+        [self addSubview:_separatorLine];
+
+        _detailLabel = [[UILabel alloc] initWithFrame:CGRectMake(6, 19, 132, 15)];
+        _detailLabel.textAlignment = NSTextAlignmentLeft;
+        _detailLabel.font = [UIFont monospacedDigitSystemFontOfSize:7.5 weight:UIFontWeightMedium];
+        _detailLabel.textColor = [UIColor colorWithWhite:0.82f alpha:1.0f];
+        _detailLabel.text = @"MODE:AUTO | TOUCH:1";
+        _detailLabel.adjustsFontSizeToFitWidth = YES;
+        _detailLabel.minimumScaleFactor = 0.5;
+        [self addSubview:_detailLabel];
 
         _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:_panGesture];
@@ -186,48 +212,71 @@ static inline CAFrameRateRange GetTheosRange(void) {
 }
 
 - (void)handleTap:(UITapGestureRecognizer *)tap {
-    CGPoint loc = [tap locationInView:self];
-    if (loc.x <= 32.0f) {
-        // Toggle FPS mode: Auto (0) <-> Locked 120 (1)
-        s_theosMode = (s_theosMode + 1) % 2;
+    s_theosMode = (s_theosMode + 1) % 2;
 
-        if (@available(iOS 10.0, *)) {
-            UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-            [haptic impactOccurred];
-        }
+    if (@available(iOS 10.0, *)) {
+        UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [haptic impactOccurred];
+    }
 
-        _lastFlashTime = CACurrentMediaTime();
-        NSString *modeText = @"A";
-        UIColor *borderColor = [UIColor colorWithRed:0.2f green:0.75f blue:1.0f alpha:1.0f]; // Blue for Auto
-        if (s_theosMode == FPSModeTheosLock120) {
-            modeText = @"120";
-            borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f]; // Green
-        }
-        self.fpsLabel.text = modeText;
-        self.layer.borderColor = borderColor.CGColor;
+    _lastFlashTime = CACurrentMediaTime();
+    if (s_theosMode == FPSModeTheosLock120) {
+        self.fpsLabel.text = @"MODE: LOCK 120";
+        self.stateLabel.text = @"[LCK]";
+        UIColor *purpleColor = [UIColor colorWithRed:0.88f green:0.25f blue:0.98f alpha:1.0f];
+        self.stateLabel.textColor = purpleColor;
+        self.layer.borderColor = purpleColor.CGColor;
+        self.detailLabel.text = @"LOCKED TO CONSTANT 120Hz";
+        self.detailLabel.textColor = purpleColor;
     } else {
-        // Toggle Cooldown meter: 0.45s -> 0.15s -> 0.25s -> 0.01s
-        s_theosCooldownIndex = (s_theosCooldownIndex + 1) % s_theosNumCooldownOptions;
-
-        if (@available(iOS 10.0, *)) {
-            UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-            [haptic impactOccurred];
-        }
-
-        CFTimeInterval cd = s_theosCooldownOptions[s_theosCooldownIndex];
-        self.cooldownLabel.text = [NSString stringWithFormat:@"%.2fs", cd];
+        self.fpsLabel.text = @"MODE: AUTO DYNAMIC";
+        self.stateLabel.text = (s_theosCurrentState == GovernorStateTheosActive) ? @"[ACT]" : @"[IDL]";
+        UIColor *blueColor = [UIColor colorWithRed:0.0f green:0.75f blue:1.0f alpha:1.0f];
+        self.stateLabel.textColor = blueColor;
+        self.layer.borderColor = blueColor.CGColor;
+        self.detailLabel.text = @"120Hz MOTION ↔ 1Hz SLEEP";
+        self.detailLabel.textColor = blueColor;
     }
 }
 
-- (void)updateFPS:(int)fps {
+- (void)updateDebugWithFPS:(int)fps durationMs:(double)ms state:(GovernorStateTheos)state {
     [self ensureSceneAttachment];
 
-    if (CACurrentMediaTime() - _lastFlashTime < 0.6) return;
-    self.fpsLabel.text = [NSString stringWithFormat:@"%d", fps];
-    if (fps >= 100) {
-        self.layer.borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f].CGColor;
+    if (CACurrentMediaTime() - _lastFlashTime < 0.5) return;
+
+    CFTimeInterval now = CACurrentMediaTime();
+    self.fpsLabel.text = [NSString stringWithFormat:@"%d FPS (%.1fms)", fps, ms];
+
+    if (s_theosMode == FPSModeTheosLock120) {
+        self.stateLabel.text = @"[LCK]";
+        UIColor *purpleColor = [UIColor colorWithRed:0.88f green:0.25f blue:0.98f alpha:1.0f];
+        self.stateLabel.textColor = purpleColor;
+        self.layer.borderColor = purpleColor.CGColor;
+        self.detailLabel.text = @"MODE:LOCK120 | CONSTANT 120";
+        self.detailLabel.textColor = purpleColor;
+    } else if (state == GovernorStateTheosActive) {
+        UIColor *greenColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.46f alpha:1.0f];
+        self.stateLabel.text = @"[ACT]";
+        self.stateLabel.textColor = greenColor;
+        self.layer.borderColor = greenColor.CGColor;
+
+        if (s_theosIsInteracting) {
+            self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
+        } else {
+            double remaining = (0.05 - (now - s_theosLastMovementTime)) * 1000.0;
+            if (remaining < 0) remaining = 0;
+            self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
+        }
+        self.detailLabel.textColor = [UIColor colorWithWhite:0.85f alpha:1.0f];
     } else {
-        self.layer.borderColor = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:1.0f].CGColor;
+        UIColor *blueColor = [UIColor colorWithRed:0.0f green:0.75f blue:1.0f alpha:1.0f];
+        self.stateLabel.text = @"[IDL]";
+        self.stateLabel.textColor = blueColor;
+        self.layer.borderColor = blueColor.CGColor;
+
+        double idleSeconds = now - s_theosLastMovementTime;
+        self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | 1Hz SLEEP (IDLE %.1fs)", idleSeconds];
+        self.detailLabel.textColor = blueColor;
     }
 }
 
@@ -272,11 +321,12 @@ static inline CAFrameRateRange GetTheosRange(void) {
         link.preferredFrameRateRange = GetTheosRange();
     }
     CFTimeInterval now = CACurrentMediaTime();
-    if (now - _lastHUDTime >= 0.1) {
+    if (now - _lastHUDTime >= 0.05) {
         _lastHUDTime = now;
         CFTimeInterval duration = link.targetTimestamp - link.timestamp;
+        double ms = (duration > 0.0001) ? (duration * 1000.0) : 8.33;
         int currentFPS = (duration > 0.001) ? (int)lround(1.0 / duration) : 120;
-        [[FPSOverlayWindowTheos sharedInstance] updateFPS:currentFPS];
+        [[FPSOverlayWindowTheos sharedInstance] updateDebugWithFPS:currentFPS durationMs:ms state:s_theosCurrentState];
     }
 }
 
@@ -394,13 +444,13 @@ static inline CAFrameRateRange GetTheosRange(void) {
 
 - (void)setContentOffset:(CGPoint)contentOffset {
     if (self.isDragging || self.isDecelerating) {
-        s_theosLastInteraction = CACurrentMediaTime();
+        s_theosLastMovementTime = CACurrentMediaTime();
     }
     %orig(contentOffset);
 }
 
 - (void)_setFrameRateRange:(CAFrameRateRange)range {
-    s_theosLastInteraction = CACurrentMediaTime();
+    s_theosLastMovementTime = CACurrentMediaTime();
     %orig(GetTheosRange());
 }
 
@@ -413,7 +463,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
 %hook UIGestureRecognizer
 
 - (void)_setFrameRateRange:(CAFrameRateRange)range {
-    s_theosLastInteraction = CACurrentMediaTime();
+    s_theosLastMovementTime = CACurrentMediaTime();
     %orig(GetTheosRange());
 }
 
@@ -427,14 +477,20 @@ static inline CAFrameRateRange GetTheosRange(void) {
 
 - (void)sendEvent:(UIEvent *)event {
     if (event.type == UIEventTypeTouches) {
-        s_theosLastInteraction = CACurrentMediaTime();
         NSSet *touches = [event allTouches];
         for (UITouch *touch in touches) {
-            if (touch.phase == UITouchPhaseBegan || touch.phase == UITouchPhaseMoved) {
+            if (touch.phase == UITouchPhaseBegan) {
+                // Way 2: Pre-emptive 120Hz trigger the microsecond skin touches glass
                 s_theosIsInteracting = YES;
+                s_theosLastMovementTime = CACurrentMediaTime();
+                break;
+            } else if (touch.phase == UITouchPhaseMoved) {
+                s_theosIsInteracting = YES;
+                s_theosLastMovementTime = CACurrentMediaTime();
                 break;
             } else if (touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
                 s_theosIsInteracting = NO;
+                s_theosLastMovementTime = CACurrentMediaTime();
             }
         }
     }
