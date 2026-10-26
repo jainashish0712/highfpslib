@@ -30,14 +30,15 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 #endif
 
 #define FPS_HIGH 120.0f
-#define FPS_LOW 60.0f
+#define FPS_LOW 1.0f
 #define FPS_HIGH_INT 120
-#define FPS_LOW_INT 60
+#define FPS_LOW_INT 1
 
 typedef NS_ENUM(NSInteger, FPSMode) {
-    FPSModeAuto = 0,    // Pixel style: 120Hz active scrolling, 60Hz still view
+    FPSModeAuto = 0,    // Pixel style: 120Hz active scrolling, 1Hz still view
     FPSModeLock120 = 1, // Locked 120Hz constantly
-    FPSModeLock60 = 2   // Locked 60Hz constantly
+    FPSModeLock1 = 2,   // Locked 1Hz constantly
+    FPSModeLock60 = FPSModeLock1
 };
 
 static FPSMode s_fpsMode = FPSModeAuto;
@@ -48,7 +49,7 @@ static BOOL s_isInteracting = NO;
 
 static inline BOOL IsScrollActive(void) {
     if (s_fpsMode == FPSModeLock120) return YES;
-    if (s_fpsMode == FPSModeLock60) return NO;
+    if (s_fpsMode == FPSModeLock1) return NO;
 
     if (s_isInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
@@ -57,7 +58,7 @@ static inline BOOL IsScrollActive(void) {
 }
 
 static inline float GetEffectiveTargetFPS(void) {
-    if (s_fpsMode == FPSModeLock60) return FPS_LOW;
+    if (s_fpsMode == FPSModeLock1) return FPS_LOW;
     if (s_fpsMode == FPSModeLock120) return FPS_HIGH;
     return IsScrollActive() ? FPS_HIGH : FPS_LOW;
 }
@@ -181,7 +182,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 }
 
 - (void)handleTap:(UITapGestureRecognizer *)tap {
-    // Cycle: Auto (Pixel 120/60) -> Locked 120 -> Locked 60 -> Auto
+    // Cycle: Auto (Pixel 120/1) -> Locked 120 -> Locked 1 -> Auto
     s_fpsMode = (s_fpsMode + 1) % 3;
 
     if (@available(iOS 10.0, *)) {
@@ -195,8 +196,8 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
     if (s_fpsMode == FPSModeLock120) {
         modeText = @"120";
         borderColor = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f]; // Green
-    } else if (s_fpsMode == FPSModeLock60) {
-        modeText = @"60";
+    } else if (s_fpsMode == FPSModeLock1) {
+        modeText = @"1";
         borderColor = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:1.0f]; // Orange
     }
     self.fpsLabel.text = modeText;
@@ -259,7 +260,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
 
 #if TARGET_OS_IOS
 - (void)onDisplayLinkTick:(CADisplayLink *)link {
-    // Dynamically adjust frame rate range: 120Hz while scrolling, 60Hz when still
+    // Dynamically adjust frame rate range: 120Hz while scrolling, 1Hz when still
     CAFrameRateRange range = GetCurrentFrameRateRange();
     if (@available(iOS 15.0, *)) {
         link.preferredFrameRateRange = range;
@@ -758,7 +759,7 @@ static void CAHighFPS_Init(void) {
             [[HighFPSDriver sharedInstance] start];
         });
 
-        NSLog(@"[CAHighFPS] Successfully loaded into %@ - Pixel mode active (120Hz scroll / 60Hz still).", [NSBundle mainBundle].bundleIdentifier);
+        NSLog(@"[CAHighFPS] Successfully loaded into %@ - Pixel mode active (120Hz scroll / 1Hz still).", [NSBundle mainBundle].bundleIdentifier);
     }
 }
 

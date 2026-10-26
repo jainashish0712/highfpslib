@@ -22,14 +22,15 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 #endif
 
 #define FPS_HIGH 120.0f
-#define FPS_LOW 60.0f
+#define FPS_LOW 1.0f
 #define FPS_HIGH_INT 120
-#define FPS_LOW_INT 60
+#define FPS_LOW_INT 1
 
 typedef NS_ENUM(NSInteger, FPSModeTheos) {
     FPSModeTheosAuto = 0,
     FPSModeTheosLock120 = 1,
-    FPSModeTheosLock60 = 2
+    FPSModeTheosLock1 = 2,
+    FPSModeTheosLock60 = FPSModeTheosLock1
 };
 
 static FPSModeTheos s_theosMode = FPSModeTheosAuto;
@@ -38,13 +39,13 @@ static BOOL s_theosIsInteracting = NO;
 
 static inline BOOL IsTheosScrollActive(void) {
     if (s_theosMode == FPSModeTheosLock120) return YES;
-    if (s_theosMode == FPSModeTheosLock60) return NO;
+    if (s_theosMode == FPSModeTheosLock1) return NO;
     if (s_theosIsInteracting) return YES;
     return (CACurrentMediaTime() - s_theosLastInteraction) < 0.45;
 }
 
 static inline float GetTheosTargetFPS(void) {
-    if (s_theosMode == FPSModeTheosLock60) return FPS_LOW;
+    if (s_theosMode == FPSModeTheosLock1) return FPS_LOW;
     if (s_theosMode == FPSModeTheosLock120) return FPS_HIGH;
     return IsTheosScrollActive() ? FPS_HIGH : FPS_LOW;
 }
@@ -152,8 +153,8 @@ static inline CAFrameRateRange GetTheosRange(void) {
     if (s_theosMode == FPSModeTheosLock120) {
         modeText = @"120";
         color = [UIColor colorWithRed:0.0f green:0.9f blue:0.4f alpha:1.0f];
-    } else if (s_theosMode == FPSModeTheosLock60) {
-        modeText = @"60";
+    } else if (s_theosMode == FPSModeTheosLock1) {
+        modeText = @"1";
         color = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:1.0f];
     }
     self.fpsLabel.text = modeText;
