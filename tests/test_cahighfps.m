@@ -62,8 +62,8 @@ int main(int argc, const char * argv[]) {
             
             CAFrameRateRange range = {0};
             [[anim valueForKey:@"preferredFrameRateRange"] getValue:&range];
-            // Must not be 30 or 80 or 90
-            assert(range.minimum == 120.0f || range.minimum == 1.0f);
+            // Must not be 80 or 90
+            assert(range.minimum == 120.0f || range.minimum == 30.0f);
             assert(range.maximum == range.minimum);
             assert(range.preferred == range.minimum);
             printf("  ✓ CAAnimation preferredFrameRateRange locked (no 80/90Hz allowed, strictly %gHz)\n", range.minimum);
@@ -79,7 +79,7 @@ int main(int argc, const char * argv[]) {
         if ([scrollAnim respondsToSelector:@selector(preferredFrameRateRange)]) {
             CAFrameRateRange range = {0};
             [[scrollAnim valueForKey:@"preferredFrameRateRange"] getValue:&range];
-            assert(range.minimum == 120.0f || range.minimum == 1.0f);
+            assert(range.minimum == 120.0f || range.minimum == 30.0f);
             printf("  ✓ CALayer addAnimation:forKey: successfully locks frame rate on added animations\n");
         }
 

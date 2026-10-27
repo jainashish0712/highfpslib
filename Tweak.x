@@ -22,17 +22,17 @@ static inline CAFrameRateRange CAFrameRateRangeMake(float minimum, float maximum
 #endif
 
 #define FPS_HIGH 120.0f
-#define FPS_LOW 1.0f
+#define FPS_LOW 30.0f
 #define FPS_HIGH_INT 120
-#define FPS_LOW_INT 1
+#define FPS_LOW_INT 30
 
 typedef NS_ENUM(NSInteger, FPSModeTheos) {
-    FPSModeTheosAuto = 0,    // Dynamic 120Hz active / 1Hz idle
+    FPSModeTheosAuto = 0,    // Dynamic 120Hz active / 30FPS idle
     FPSModeTheosLock120 = 1  // Force 120Hz constant
 };
 
 typedef NS_ENUM(NSInteger, GovernorStateTheos) {
-    GovernorStateTheosIdle = 0,   // 1Hz Deep Sleep
+    GovernorStateTheosIdle = 0,   // 30FPS Deep Sleep
     GovernorStateTheosActive = 1  // 120Hz Active Motion
 };
 
@@ -234,7 +234,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
         UIColor *blueColor = [UIColor colorWithRed:0.0f green:0.75f blue:1.0f alpha:1.0f];
         self.stateLabel.textColor = blueColor;
         self.layer.borderColor = blueColor.CGColor;
-        self.detailLabel.text = @"120Hz MOTION ↔ 1Hz SLEEP";
+        self.detailLabel.text = @"120Hz MOTION ↔ 30FPS SLEEP";
         self.detailLabel.textColor = blueColor;
     }
 }
@@ -275,7 +275,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
         self.layer.borderColor = blueColor.CGColor;
 
         double idleSeconds = now - s_theosLastMovementTime;
-        self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | 1Hz SLEEP (IDLE %.1fs)", idleSeconds];
+        self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | 30FPS SLEEP (IDLE %.1fs)", idleSeconds];
         self.detailLabel.textColor = blueColor;
     }
 }
