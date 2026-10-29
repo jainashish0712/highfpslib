@@ -55,8 +55,8 @@ static inline BOOL IsMotionActive(void) {
     if (s_fpsMode == FPSModeLock120) return YES;
     if (s_isInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 200ms (0.20s) settle buffer ensures UIKit's exponential deceleration tail has 100% finished
-    return (now - s_lastMovementTime) < 0.20;
+    // 1000ms (1.0s) settling delay before dropping from 120fps to 30fps
+    return (now - s_lastMovementTime) < 1.0;
 }
 
 static inline float GetEffectiveTargetFPS(void) {
@@ -297,7 +297,7 @@ static void SwizzleClassMethod(Class cls, SEL origSEL, SEL swizzledSEL) {
         if (s_isInteracting) {
             self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
         } else {
-            double remaining = (0.20 - (now - s_lastMovementTime)) * 1000.0;
+            double remaining = (1.0 - (now - s_lastMovementTime)) * 1000.0;
             if (remaining < 0) remaining = 0;
             self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
         }

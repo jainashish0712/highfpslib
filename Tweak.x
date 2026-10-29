@@ -47,8 +47,8 @@ static inline BOOL IsTheosMotionActive(void) {
     if (s_theosMode == FPSModeTheosLock120) return YES;
     if (s_theosIsInteracting) return YES;
     CFTimeInterval now = CACurrentMediaTime();
-    // 200ms (0.20s) settle buffer ensures UIKit's exponential deceleration tail has 100% finished
-    return (now - s_theosLastMovementTime) < 0.20;
+    // 1000ms (1.0s) settling delay before dropping from 120fps to 30fps
+    return (now - s_theosLastMovementTime) < 1.0;
 }
 
 static inline float GetTheosTargetFPS(void) {
@@ -263,7 +263,7 @@ static inline CAFrameRateRange GetTheosRange(void) {
         if (s_theosIsInteracting) {
             self.detailLabel.text = @"MODE:AUTO | TOUCH CONTACT (120Hz)";
         } else {
-            double remaining = (0.20 - (now - s_theosLastMovementTime)) * 1000.0;
+            double remaining = (1.0 - (now - s_theosLastMovementTime)) * 1000.0;
             if (remaining < 0) remaining = 0;
             self.detailLabel.text = [NSString stringWithFormat:@"MODE:AUTO | SETTLING (%.0fms)", remaining];
         }
